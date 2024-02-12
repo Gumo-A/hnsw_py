@@ -6,7 +6,7 @@ index = HNSW()
 
 np.random.seed(seed=1)
 sample = np.random.random((1000, 3))
-queries = np.random.random((10, 3))
+queries = np.random.random((3, 3))
 
 nearest_to_queries = {}
 for idx, query in enumerate(queries):
@@ -23,5 +23,5 @@ for key, value in nearest_to_queries.items():
 for vector in sample:
     index.insert(vector)
 
-
+print(len(index.layers))
 

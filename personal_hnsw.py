@@ -5,77 +5,102 @@ import math
 class HNSW:
     def __init__(
         self,
+        M=2,
         mL=0.25,
+        layers=4,
+        efConstruction=5
     ):
-        self.current_vector_id = 0
+        self.M = M
         self.mL = mL
-        self.layer_numbers = set()
-        self.layers = []
-        self.efConstruction = 5
+        self.current_vector_id = 0
+        self.efConstruction = efConstruction
+        self.layers = [nx.Graph() for _ in range(layers)]
 
-        for i in range(10000):
-            level = self.determine_layer()
-            for j in range(level+1):
-                self.layer_numbers.add(j)
-
-        for level in self.layer_numbers:
-            self.layers.append(nx.Graph(level=level))
-
-        print('HNSW index initialized with', max(self.layer_numbers), 'layers.')
+        print('HNSW index initialized with', len(self.layers), 'layers.')
 
     def determine_layer(self):
         return math.floor(-np.log(np.random.random())*self.mL)
         
+    def get_entrypoint(self):
+
+        for layer_number, layer in enumerate(self.layers):
+            if len(self.layers[layer_number].nodes()) != 0:
+                return set([np.random.choice(self.layers[layer_number].nodes()) ])
+        return None
+        
     def insert(self, vector):
 
-        currently_found_nearest = set()
-        max_layer = max(self.layer_numbers)
-        entry_point = np.random.choice(self.layers[max_layer].nodes()) if self.layers[max_layer].order() > 0 else None
-        
-        print('Inserting new vector')
-        new_vector_layer = self.determine_layer()
-        print('In layer', new_vector_layer)
+        W = set()
+        ep = self.get_entrypoint()
+        L = len(self.layers) - 1
+        l = math.floor(-np.log(np.random.random())*self.mL)
 
         # step 1
-        for layer_number in range(max(max_layer, new_vector_layer), new_vector_layer, -1):
-            entry_point = self.get_nn_in_layer(
+        for layer_number in range(max(L, l), l, -1):
+
+            if len(self.layers[layer_number].nodes()) == 0:
+                continue
+            
+            W = self.search_layer(
                 layer_number=layer_number,
                 query=vector,
-                entry_point=entry_point,
+                entry_point=ep,
                 ef=1
             )
+            ep = self.get_nearest(layer_number, W, vector)
+
 
         # step 2
-        for layer_number in range(new_vector_layer, -1, -1):
-            entry_point = self.get_nn_in_layer(
-                layer_number=layer_number,
-                query=vector,
-                entry_point=entry_point,
-                ef=self.efConstruction
-            )
+        for layer_number in range(l, -1, -1):
+            if len(self.layers[layer_number]) == 0:
+                self.layers[layer_number].add_node(self.current_vector_id, vector=vector)
+                ep = set([self.current_vector_id])
+                continue
+
             self.layers[layer_number].add_node(self.current_vector_id, vector=vector)
 
-            print(layer_number)
+            ep = self.search_layer(
+                layer_number=layer_number,
+                query=vector,
+                entry_point=ep,
+                ef=self.efConstruction
+            )
+
+            neighbors_to_connect = self.select_neighbors(
+                layer_number=layer_number,
+                node_id=self.current_vector_id,
+                candidates=ep
+            )
+            
             self.add_edges_simple(
                 layer_number=layer_number,
                 node_id=self.current_vector_id, 
-                neighbors=entry_point
+                neighbors=ep
             )
 
-            self.current_vector_id += 1
+        self.current_vector_id += 1
 
-    def add_edges_simple(self, layer_number: int, node_id: int, neighbors: list[int]):
+
+    def select_neighbors(self, layer_number: int, node_id: int, candidates: set[int]):
 
         distances = []
-        for neighbor in neighbors:
-            vector = self.layers[layer_number].nodes()[neighbor]['vector'] 
-            distances.append(self.get_distance(vector, query))
-        sorted_neighbors = sorted(list(zip(neighbors, distances)), key=lambda x: x[1])
+        for candidate in candidates:
+            vector = self.layers[layer_number].nodes()[candidate]['vector'] 
+            distances.append(
+                self.get_distance(
+                    vector,
+                    self.layers[layer_number].nodes()[node_id]['vector']
+                )
+            )
+        return sorted(list(zip(candidates, distances)), key=lambda x: x[1])[:self.M]
 
-        for addition in range(self.M):
+    def add_edges_simple(self, layer_number: int, node_id: int, sorted_candidates: list[int]):
+        
+        for candidate, distance in sorted_candidates:
             self.layers[layer_number].add_edge(
                 node_id,
-                sorted_neighbors[addition][0]
+                candidate,
+                distance=distance
             )
             
     def get_nearest(self, layer_number: int, candidates: set, query: np.array):
@@ -87,6 +112,7 @@ class HNSW:
         for candidate in candidates:
             vector = self.layers[layer_number].nodes()[candidate]['vector'] 
             distances.append(self.get_distance(vector, query))
+
         return sorted(list(zip(candidates, distances)), key=lambda x: x[1])[0][0]
 
 
@@ -99,76 +125,56 @@ class HNSW:
         for candidate in candidates:
             vector = self.layers[layer_number].nodes()[candidate]['vector'] 
             distances.append(self.get_distance(vector, query))
+        print(distances)
+        print(candidates)
         return sorted(list(zip(candidates, distances)), key=lambda x: x[1])[-1][0]
 
 
-    def get_nn_in_layer(self, layer_number: int, query: np.array, entry_point: int, ef: int):
-
-        if entry_point is None:
-            return None
+    def search_layer(self, layer_number: int, query: np.array, entry_point: int, ef: int):
         
-        visited_elements = set([entry_point])
-        candidates = set([entry_point])
-        found_nn = set([entry_point])
+        v = set([entry_point]) if not isinstance(entry_point, set) else entry_point
+        C = set([entry_point]) if not isinstance(entry_point, set) else entry_point
+        W = set([entry_point]) if not isinstance(entry_point, set) else entry_point
         
-        while len(candidates) > 0:
-            nearest_candidate = self.get_nearest(layer_number, candidates, query)
-            candidates.remove(nearest_candidate)
-            furthest_neighbor = self.get_furthest(layer_number, found_nn, query)
+        while len(C) > 0:
+            c = self.get_nearest(layer_number, C, query)
+            C.remove(c)
+            f = self.get_furthest(layer_number, W, query)
 
             cand_query_dist = self.get_distance(
-                self.layers[layer_number].nodes()[nearest_candidate]['vector'],
+                self.layers[layer_number].nodes()[c]['vector'],
                 query
             )
             furthest_query_dist = self.get_distance(
-                self.layers[layer_number].nodes()[furthest_neighbor]['vector'],
+                self.layers[layer_number].nodes()[f]['vector'],
                 query
             ) 
 
             if cand_query_dist > furthest_query_dist:
-                break # all element in found_nn are evaluated 
+                break # all element in W are evaluated 
 
-            for neighbor in self.layers[layer_number].neighbors(nearest_candidate):
-                if neighbor not in visited_elements:
-                    visited_elements.add(neighbor)
-                    furthest_neighbor = self.get_furthest(layer_number, found_nn, query)
+            for neighbor in self.layers[layer_number].neighbors(c):
+                if neighbor not in v:
+                    v.add(neighbor)
+                    f = self.get_furthest(layer_number, W, query)
 
                     neighbor_query_dist = self.get_distance(
                         self.layers[layer_number].nodes()[neighbor]['vector'],
                         query
                     )
                     furthest_query_dist = self.get_distance(
-                        self.layers[layer_number].nodes()[furthest_neighbor]['vector'],
+                        self.layers[layer_number].nodes()[f]['vector'],
                         query
                     )
 
-                    if (neighbor_query_dist < furthest_query_dist) or (len(found_nn) < ef):
-                        candidates.add(neighbor)
-                        found_nn.add(neighbor)
-                        if len(found_nn) > ef:
-                            found_nn.pop(furthest_neighbor)
+                    if (neighbor_query_dist < furthest_query_dist) or (len(W) < ef):
+                        C.add(neighbor)
+                        W.add(neighbor)
+                        if len(W) > ef:
+                            W.remove(f)
 
-        return found_nn
-                        
-        # neighbors = list(self.layers[layer_number].neighbors(entry_point))
-        # distances = []
-        # for neighbor in neighbors:
-        #     distances.append(self.get_distance(neighbor, query))
+        return W
 
-        # nearest = sorted(list(zip(neighbors, distances)), key=lambda x: x[1])
-
-        # dist_to_nearest = self.get_distance(query, self.layers[layer_number][nearest[0]])
-        # dist_to_entry = self.get_distance(query, self.layers[layer_number][entry_point])
-
-        # if dist_to_nearest > dist_to_entry:
-        #     return nearest[:ef]
-        # else:
-        #     self.get_nn_in_layer(
-        #         layer_number=layer_number,
-        #         query=query,
-        #         entry_point=nearest[:ef]
-        #     )
-        
     def get_distance(self, u, v):
         return (((u - v)**2).sum())**0.5
 
