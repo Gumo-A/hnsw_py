@@ -1,14 +1,22 @@
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 import networkx as nx
 import math
 from personal_hnsw import HNSW
 import numpy as np
+import time
 
-index = HNSW(mL=1)
+index = HNSW(
+    mL=0.75, 
+    layers=4,
+    efConstruction=25
+)
+n = 3000
+dim = 12
 
 np.random.seed(seed=1)
-sample = np.random.random((1000, 3))
-queries = np.random.random((3, 3))
+sample = np.random.random((n, dim))
+queries = np.random.random((10, dim))
 
 nearest_to_queries = {}
 for idx, query in enumerate(queries):
@@ -22,13 +30,15 @@ for key, value in nearest_to_queries.items():
     print(f'Nearest to query {key} is {value}')
 
 
-for idx, vector in enumerate(sample):
-    if idx > 100:
-        break
+print(f'adding {n} vectors to HNSW')
+for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
     index.insert(vector)
 
-print(len(index.layers))
+for idx, query in enumerate(queries):
+    print(f'ANN of query {idx}', index.ann_by_vector(query, 4))
 
-for layer in index.layers:
-    nx.draw(layer)
-    plt.show()
+# for idx, layer in enumerate(index.layers):
+#     nx.draw(layer)
+#     plt.show()
+#     print('There are', layer.order(), 'nodes in the layer', idx)
+

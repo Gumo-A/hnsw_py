@@ -34,12 +34,35 @@ class HNSW:
                 )
         return None
         
+    def ann_by_vector(self, vector, n):
+        ep = self.get_entrypoint()
+        L = len(self.layers) - 1
+
+        for layer_number in range(L, -1, -1):
+            ep = self.search_layer(
+                layer_number=layer_number,
+                query=vector,
+                entry_point=ep,
+                ef=n
+            )
+
+        neighbors = self.select_neighbors(
+            layer_number=0,
+            node_id=vector,
+            candidates=ep,
+            n=n
+        )
+        return neighbors[:n]
+
     def insert(self, vector):
 
         W = set()
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
         l = math.floor(-np.log(np.random.random())*self.mL)
+        while l > L:
+            self.layers.append(nx.Graph())
+            L += 1
 
         # step 1
         for layer_number in range(L, l, -1):
@@ -63,7 +86,6 @@ class HNSW:
                     self.current_vector_id, 
                     vector=vector
                 )
-                # ep = set([self.current_vector_id])
                 continue
 
             self.layers[layer_number].add_node(
@@ -99,26 +121,37 @@ class HNSW:
         self, 
         layer_number: int, 
         node_id: int, 
-        candidates: set[int]
+        candidates: set[int],
+        n=None
     ):
+
 
         distances = []
         for candidate in candidates:
-            vector = self.layers[layer_number]\
-                        .nodes()[candidate]['vector'] 
+            candidate_vector = self.layers[layer_number] \
+                                .nodes()[candidate]['vector'] 
+
+            if isinstance(node_id, int):
+                inserted_vector = self.layers[layer_number] \
+                                    .nodes()[node_id]['vector']
+            else:
+                inserted_vector = node_id
+                
             distances.append(
-                self.get_distance(
-                    vector,
-                    self.layers[layer_number]\
-                        .nodes()[node_id]['vector']
-                )
+                self.get_distance(candidate_vector, inserted_vector)
             )
+
+        if n is None:
+            top_to_return = self.M
+        else:
+            top_to_return = n
+
         return sorted(
             list(
                 zip(candidates, distances)
             ), 
             key=lambda x: x[1]
-        )[:self.M]
+        )[:top_to_return]
 
     def add_edges_simple(
         self, 
