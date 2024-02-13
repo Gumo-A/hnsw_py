@@ -1,8 +1,10 @@
+import matplotlib.pyplot as plt
+import networkx as nx
 import math
 from personal_hnsw import HNSW
 import numpy as np
 
-index = HNSW()
+index = HNSW(mL=1)
 
 np.random.seed(seed=1)
 sample = np.random.random((1000, 3))
@@ -20,8 +22,13 @@ for key, value in nearest_to_queries.items():
     print(f'Nearest to query {key} is {value}')
 
 
-for vector in sample:
+for idx, vector in enumerate(sample):
+    if idx > 100:
+        break
     index.insert(vector)
 
 print(len(index.layers))
 
+for layer in index.layers:
+    nx.draw(layer)
+    plt.show()

@@ -23,9 +23,15 @@ class HNSW:
         
     def get_entrypoint(self):
 
-        for layer_number, layer in enumerate(self.layers):
+        for layer_number in range(len(self.layers)-1, -1, -1):
             if len(self.layers[layer_number].nodes()) != 0:
-                return set([np.random.choice(self.layers[layer_number].nodes()) ])
+                return set(
+                    [
+                        np.random.choice(
+                            self.layers[layer_number].nodes()
+                        )
+                    ]
+                )
         return None
         
     def insert(self, vector):
@@ -36,7 +42,7 @@ class HNSW:
         l = math.floor(-np.log(np.random.random())*self.mL)
 
         # step 1
-        for layer_number in range(max(L, l), l, -1):
+        for layer_number in range(L, l, -1):
 
             if len(self.layers[layer_number].nodes()) == 0:
                 continue
@@ -53,11 +59,17 @@ class HNSW:
         # step 2
         for layer_number in range(l, -1, -1):
             if len(self.layers[layer_number]) == 0:
-                self.layers[layer_number].add_node(self.current_vector_id, vector=vector)
-                ep = set([self.current_vector_id])
+                self.layers[layer_number].add_node(
+                    self.current_vector_id, 
+                    vector=vector
+                )
+                # ep = set([self.current_vector_id])
                 continue
 
-            self.layers[layer_number].add_node(self.current_vector_id, vector=vector)
+            self.layers[layer_number].add_node(
+                self.current_vector_id, 
+                vector=vector
+            )
 
             ep = self.search_layer(
                 layer_number=layer_number,
@@ -75,26 +87,45 @@ class HNSW:
             self.add_edges_simple(
                 layer_number=layer_number,
                 node_id=self.current_vector_id, 
-                neighbors=ep
+                sorted_candidates=neighbors_to_connect
             )
+
+            # TODO: shrink connections if they exceed Mmax
 
         self.current_vector_id += 1
 
 
-    def select_neighbors(self, layer_number: int, node_id: int, candidates: set[int]):
+    def select_neighbors(
+        self, 
+        layer_number: int, 
+        node_id: int, 
+        candidates: set[int]
+    ):
 
         distances = []
         for candidate in candidates:
-            vector = self.layers[layer_number].nodes()[candidate]['vector'] 
+            vector = self.layers[layer_number]\
+                        .nodes()[candidate]['vector'] 
             distances.append(
                 self.get_distance(
                     vector,
-                    self.layers[layer_number].nodes()[node_id]['vector']
+                    self.layers[layer_number]\
+                        .nodes()[node_id]['vector']
                 )
             )
-        return sorted(list(zip(candidates, distances)), key=lambda x: x[1])[:self.M]
+        return sorted(
+            list(
+                zip(candidates, distances)
+            ), 
+            key=lambda x: x[1]
+        )[:self.M]
 
-    def add_edges_simple(self, layer_number: int, node_id: int, sorted_candidates: list[int]):
+    def add_edges_simple(
+        self, 
+        layer_number: int, 
+        node_id: int, 
+        sorted_candidates: set[int]
+    ):
         
         for candidate, distance in sorted_candidates:
             self.layers[layer_number].add_edge(
@@ -103,38 +134,67 @@ class HNSW:
                 distance=distance
             )
             
-    def get_nearest(self, layer_number: int, candidates: set, query: np.array):
+    def get_nearest(
+        self, 
+        layer_number: int, 
+        candidates: set, 
+        query: np.array
+    ):
         """
             Gets the nearest element from the candidate list to the query
         """
 
         distances = []
         for candidate in candidates:
-            vector = self.layers[layer_number].nodes()[candidate]['vector'] 
+            vector = self.layers[layer_number]\
+                        .nodes()[candidate]['vector'] 
             distances.append(self.get_distance(vector, query))
 
-        return sorted(list(zip(candidates, distances)), key=lambda x: x[1])[0][0]
+        return sorted(
+            list(
+                zip(candidates, distances)
+            ), 
+            key=lambda x: x[1]
+        )[0][0]
 
 
-    def get_furthest(self, layer_number: int, candidates: set, query: np.array):
+    def get_furthest(
+        self, 
+        layer_number: int, 
+        candidates: set, 
+        query: np.array
+    ):
         """
             Gets the furthest element from the candidate list to the query
         """
 
         distances = []
         for candidate in candidates:
-            vector = self.layers[layer_number].nodes()[candidate]['vector'] 
+            vector = self.layers[layer_number]\
+                        .nodes()[candidate]['vector'] 
             distances.append(self.get_distance(vector, query))
-        print(distances)
-        print(candidates)
-        return sorted(list(zip(candidates, distances)), key=lambda x: x[1])[-1][0]
+
+        return sorted(
+            list(
+                zip(candidates, distances)
+            ), 
+            key=lambda x: x[1]
+        )[-1][0]
 
 
-    def search_layer(self, layer_number: int, query: np.array, entry_point: int, ef: int):
-        
-        v = set([entry_point]) if not isinstance(entry_point, set) else entry_point
-        C = set([entry_point]) if not isinstance(entry_point, set) else entry_point
-        W = set([entry_point]) if not isinstance(entry_point, set) else entry_point
+    def search_layer(
+        self, 
+        layer_number: int, 
+        query: np.array, 
+        entry_point: set[int], 
+        ef: int
+    ):
+        v = set([entry_point]) if not isinstance(entry_point, set) \
+                                else entry_point.copy()
+        C = set([entry_point]) if not isinstance(entry_point, set) \
+                                else entry_point.copy()
+        W = set([entry_point]) if not isinstance(entry_point, set) \
+                                else entry_point.copy()
         
         while len(C) > 0:
             c = self.get_nearest(layer_number, C, query)
