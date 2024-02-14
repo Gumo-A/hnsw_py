@@ -6,17 +6,28 @@ class HNSW:
     def __init__(
         self,
         M=2,
-        mL=0.25,
+        mL=None,
         layers=4,
         efConstruction=5
     ):
         self.M = M
-        self.mL = mL
+        self.mL = 1/np.log(M) if mL is None else mL
         self.current_vector_id = 0
         self.efConstruction = efConstruction
         self.layers = [nx.Graph() for _ in range(layers)]
 
-        print('HNSW index initialized with', len(self.layers), 'layers.')
+    def clean_layers(self):
+        """
+            Removes all empty layers from the top of the
+            layers stack
+        """
+
+        max_layer_to_keep = len(self.layers) - 1
+        for idx in range(len(self.layers)):
+            if self.layers[idx].order() == 0:
+                max_layer_to_keep = min(max_layer_to_keep, idx)
+
+        self.layers = self.layers[:max_layer_to_keep]
 
     def determine_layer(self):
         return math.floor(-np.log(np.random.random())*self.mL)
@@ -67,7 +78,7 @@ class HNSW:
         # step 1
         for layer_number in range(L, l, -1):
 
-            if len(self.layers[layer_number].nodes()) == 0:
+            if self.layers[layer_number].order() == 0:
                 continue
             
             W = self.search_layer(
@@ -81,7 +92,7 @@ class HNSW:
 
         # step 2
         for layer_number in range(l, -1, -1):
-            if len(self.layers[layer_number]) == 0:
+            if self.layers[layer_number].order() == 0:
                 self.layers[layer_number].add_node(
                     self.current_vector_id, 
                     vector=vector
@@ -167,6 +178,17 @@ class HNSW:
                 distance=distance
             )
             
+
+    def add_edges_heuristic(
+            self, 
+            layer_number: int, 
+            node_id: int, 
+            sorted_candidates: set[int]
+        ):
+        # TODO
+        pass
+
+
     def get_nearest(
         self, 
         layer_number: int, 

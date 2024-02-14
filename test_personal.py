@@ -1,3 +1,4 @@
+from collections import defaultdict
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -6,39 +7,75 @@ from personal_hnsw import HNSW
 import numpy as np
 import time
 
-index = HNSW(
-    mL=0.75, 
-    layers=4,
-    efConstruction=25
-)
-n = 3000
-dim = 12
+n = 10000
+dim = 300
 
 np.random.seed(seed=1)
 sample = np.random.random((n, dim))
-queries = np.random.random((10, dim))
-
-nearest_to_queries = {}
-for idx, query in enumerate(queries):
-    distances = []
-    for jdx, vector in enumerate(sample):
-        distances.append((jdx, index.get_distance(query, vector)))
-
-    nearest_to_queries[idx] = sorted(distances, key=lambda x: x[1])[0]
-
-for key, value in nearest_to_queries.items():
-    print(f'Nearest to query {key} is {value}')
+queries = np.random.random((1000, dim))
 
 
-print(f'adding {n} vectors to HNSW')
-for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
-    index.insert(vector)
+def brute_force():
+    index = HNSW()
+    start = time.time()
+    nearest_to_queries = {}
+    for idx, query in enumerate(queries):
+        distances = []
+        for jdx, vector in enumerate(sample):
+            distances.append((jdx, index.get_distance(query, vector)))
 
-for idx, query in enumerate(queries):
-    print(f'ANN of query {idx}', index.ann_by_vector(query, 4))
+        nearest_to_queries[idx] = sorted(distances, key=lambda x: x[1])[0]
+    end = time.time()
+    brute_force_time = round(end - start, 2)
+    return nearest_to_queries, brute_force_time
 
-# for idx, layer in enumerate(index.layers):
-#     nx.draw(layer)
-#     plt.show()
-#     print('There are', layer.order(), 'nodes in the layer', idx)
+
+def ann(index, sample):
+    print(f'adding {n} vectors to HNSW')
+    for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
+        index.insert(vector)
+    index.clean_layers()
+
+    start = time.time()
+    nearest_to_queries_ann = {}
+    for idx, query in enumerate(queries):
+        anns = index.ann_by_vector(query, 10)
+        nearest_to_queries_ann[idx] = anns[0]
+    end = time.time()
+    ann_time = round(end - start, 2)
+
+    return (
+        nearest_to_queries_ann,
+        ann_time
+    )
+
+
+def get_measures(nearest_to_queries, nearest_to_queries_ann):
+    measures = defaultdict(list)
+    for key, value in nearest_to_queries_ann.items():
+        result = True if value[0] == nearest_to_queries[key][0] else False
+        measures['acc@1'].append(result)
+
+    measures['acc@1'] = np.array(measures['acc@1'])
+
+    return measures
+
+
+if __name__ == '__main__':
+    nearest_to_queries, brute_force_time = brute_force()
+    print('Elapsed time to brute force find NNs', brute_force_time)
+
+    index = HNSW(
+        M=5,
+        layers=10,
+        efConstruction=35
+    )
+
+    nearest_to_queries_ann, ann_time = ann(index, sample)
+    print('Elapsed time to find ANNs', ann_time)
+
+    measures = get_measures(nearest_to_queries, nearest_to_queries_ann)
+
+    print(f'ACC@1 (mL = {index.mL}):', measures['acc@1'].mean())
+    print('The index ended up with', len(index.layers), 'layers')
 
