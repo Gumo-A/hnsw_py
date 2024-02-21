@@ -54,7 +54,7 @@ class HNSW:
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
-                ef=n
+                ef=1
             )
 
         neighbors = self.select_neighbors(
@@ -63,14 +63,14 @@ class HNSW:
             candidates=ep,
             n=n
         )
-        return neighbors[:n]
+        return neighbors
 
     def insert(self, vector):
 
-        W = set()
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
         l = math.floor(-np.log(np.random.random())*self.mL)
+
         while l > L:
             self.layers.append(nx.Graph())
             L += 1
@@ -192,26 +192,27 @@ class HNSW:
     def get_nearest(
         self, 
         layer_number: int, 
-        candidates: set, 
+        candidates: set[int], 
         query: np.array
     ):
         """
-            Gets the nearest element from the candidate list to the query
+            Gets the nearest element from the candidate list 
+            to the query
         """
 
         distances = []
+        layer = self.layers[layer_number]
+
         for candidate in candidates:
-            vector = self.layers[layer_number]\
-                        .nodes()[candidate]['vector'] 
+            vector = layer.nodes()[candidate]['vector'] 
             distances.append(self.get_distance(vector, query))
 
-        return sorted(
-            list(
-                zip(candidates, distances)
-            ), 
-            key=lambda x: x[1]
-        )[0][0]
+        cands_dists = list(zip(candidates, distances))
+        cands_dists = sorted(cands_dists, key=lambda x: x[1])
 
+        nearest_candidate = cands_dists[0][0]
+
+        return nearest_candidate
 
     def get_furthest(
         self, 
@@ -251,38 +252,42 @@ class HNSW:
         W = set([entry_point]) if not isinstance(entry_point, set) \
                                 else entry_point.copy()
         
+        layer = self.layers[layer_number]
+
         while len(C) > 0:
             c = self.get_nearest(layer_number, C, query)
             C.remove(c)
             f = self.get_furthest(layer_number, W, query)
 
             cand_query_dist = self.get_distance(
-                self.layers[layer_number].nodes()[c]['vector'],
+                layer.nodes()[c]['vector'],
                 query
             )
             furthest_query_dist = self.get_distance(
-                self.layers[layer_number].nodes()[f]['vector'],
+                layer.nodes()[f]['vector'],
                 query
             ) 
 
             if cand_query_dist > furthest_query_dist:
                 break # all element in W are evaluated 
 
-            for neighbor in self.layers[layer_number].neighbors(c):
+            for neighbor in layer.neighbors(c):
                 if neighbor not in v:
                     v.add(neighbor)
                     f = self.get_furthest(layer_number, W, query)
 
                     neighbor_query_dist = self.get_distance(
-                        self.layers[layer_number].nodes()[neighbor]['vector'],
+                        layer.nodes()[neighbor]['vector'],
                         query
                     )
                     furthest_query_dist = self.get_distance(
-                        self.layers[layer_number].nodes()[f]['vector'],
+                        layer.nodes()[f]['vector'],
                         query
                     )
 
-                    if (neighbor_query_dist < furthest_query_dist) or (len(W) < ef):
+                    if (neighbor_query_dist < furthest_query_dist) \
+                         or (len(W) < ef):
+
                         C.add(neighbor)
                         W.add(neighbor)
                         if len(W) > ef:
@@ -290,6 +295,10 @@ class HNSW:
 
         return W
 
-    def get_distance(self, u, v):
-        return (((u - v)**2).sum())**0.5
+    def get_distance(self, a, b, b_matrix=False):
+        if not b_matrix:
+            # return np.linalg.norm(a-b)
+            return (((a - b)**2).sum())**0.5
+        else:
+            return np.linalg.norm(a-b, axis=1)
 

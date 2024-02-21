@@ -7,15 +7,15 @@ from personal_hnsw import HNSW
 import numpy as np
 import time
 
-n = 10000
-dim = 300
+n = 1000
+dim = 50
 
 np.random.seed(seed=1)
 sample = np.random.random((n, dim))
 queries = np.random.random((1000, dim))
 
 
-def brute_force():
+def brute_force(sample, queries):
     index = HNSW()
     start = time.time()
     nearest_to_queries = {}
@@ -62,11 +62,11 @@ def get_measures(nearest_to_queries, nearest_to_queries_ann):
 
 
 if __name__ == '__main__':
-    nearest_to_queries, brute_force_time = brute_force()
+    nearest_to_queries, brute_force_time = brute_force(sample, queries)
     print('Elapsed time to brute force find NNs', brute_force_time)
 
     index = HNSW(
-        M=5,
+        M=10,
         layers=10,
         efConstruction=35
     )
