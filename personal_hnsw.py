@@ -297,8 +297,7 @@ class HNSW:
 
     def get_distance(self, a, b, b_matrix=False):
         if not b_matrix:
-            # return np.linalg.norm(a-b)
-            return (((a - b)**2).sum())**0.5
+            return np.linalg.norm(a-b)
         else:
             return np.linalg.norm(a-b, axis=1)
 
