@@ -1,7 +1,12 @@
 import sys
 from personal_hnsw import HNSW
-from helpers.glove_helpers import load_brute_force, load_glove
-
+from helpers.glove_helpers import (
+    load_glove,
+    load_brute_force,
+    get_distance,
+    get_measures,
+    ann
+)
 
 if __name__ == '__main__':
 
@@ -10,18 +15,10 @@ if __name__ == '__main__':
     bruteforce_data = load_brute_force(dim=dim, limit=limit)
     embeddings = load_glove(dim=dim, limit=limit)
 
-    test_val = 0
-    test_emb = embeddings[test_val]
     index = HNSW()
+    anns, elapsed_time = ann(index, embeddings)
+    print(list(anns.items())[:10])
+    measures = get_measures(bruteforce_data, anns)
+    print(measures.mean())
 
-    dists_vector = index.get_distance(test_emb, embeddings, b_matrix=True)
-    dists_vector = [(idx, dist) for idx, dist in enumerate(dists_vector)]
 
-    dists_vector = sorted(
-        dists_vector,
-        key=lambda x: x[1]
-    )
-
-    print(index.get_distance(embeddings[test_val], embeddings[dists_vector[1][0]]))
-    print(bruteforce_data[test_val])
-    print(dists_vector[1:11])

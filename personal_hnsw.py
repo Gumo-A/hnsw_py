@@ -2,6 +2,7 @@ import networkx as nx
 import numpy as np
 import math
 
+
 class HNSW:
     def __init__(
         self,

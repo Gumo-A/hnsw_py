@@ -31,7 +31,7 @@ def brute_force(sample, queries):
 
 
 def ann(index, sample):
-    print(f'adding {n} vectors to HNSW')
+    print(f'Adding {n} vectors to HNSW')
     for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
         index.insert(vector)
     index.clean_layers()

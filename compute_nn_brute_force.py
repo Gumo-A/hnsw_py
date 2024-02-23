@@ -1,6 +1,9 @@
 import sys
 from personal_hnsw import HNSW
-from helpers.glove_helpers import brute_force_nn, load_glove
+from helpers.glove_helpers import (
+    brute_force_nn, 
+    load_glove,
+)
 
 
 if __name__ == '__main__':
