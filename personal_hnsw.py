@@ -8,7 +8,7 @@ class HNSW:
         self,
         M=2,
         mL=None,
-        layers=4,
+        layers=7,
         efConstruction=5
     ):
         self.M = M
@@ -58,9 +58,9 @@ class HNSW:
                 ef=1
             )
 
-        neighbors = self.select_neighbors(
+        neighbors = self.select_neighbors_simple(
             layer_number=0,
-            node_id=vector,
+            inserted_node=vector,
             candidates=ep,
             n=n
         )
@@ -112,13 +112,19 @@ class HNSW:
                 ef=self.efConstruction
             )
 
-            neighbors_to_connect = self.select_neighbors(
+            # neighbors_to_connect = self.select_neighbors_simple(
+            #     layer_number=layer_number,
+            #     inserted_node=self.current_vector_id,
+            #     candidates=ep
+            # )
+
+            neighbors_to_connect = self.select_neighbors_heuristic(
                 layer_number=layer_number,
-                node_id=self.current_vector_id,
+                inserted_node=self.current_vector_id,
                 candidates=ep
             )
             
-            self.add_edges_simple(
+            self.add_edges(
                 layer_number=layer_number,
                 node_id=self.current_vector_id, 
                 sorted_candidates=neighbors_to_connect
@@ -129,10 +135,10 @@ class HNSW:
         self.current_vector_id += 1
 
 
-    def select_neighbors(
+    def select_neighbors_simple(
         self, 
         layer_number: int, 
-        node_id: int, 
+        inserted_node: int, 
         candidates: set[int],
         n=None
     ):
@@ -143,11 +149,11 @@ class HNSW:
             candidate_vector = self.layers[layer_number] \
                                 .nodes()[candidate]['vector'] 
 
-            if isinstance(node_id, int):
+            if isinstance(inserted_node, int):
                 inserted_vector = self.layers[layer_number] \
-                                    .nodes()[node_id]['vector']
+                                    .nodes()[inserted_node]['vector']
             else:
-                inserted_vector = node_id
+                inserted_vector = inserted_node
                 
             distances.append(
                 self.get_distance(candidate_vector, inserted_vector)
@@ -165,7 +171,51 @@ class HNSW:
             key=lambda x: x[1]
         )[:top_to_return]
 
-    def add_edges_simple(
+
+
+    def select_neighbors_heuristic(
+        self, 
+        layer_number: int, 
+        inserted_node: int, 
+        candidates: set[int],
+        extend_cands: bool = False,
+        keep_pruned: bool = True
+    ):
+
+        layer = self.layers[layer_number]
+        inserted_vector = layer.nodes()[inserted_node]['vector']
+        R = set()
+        W = candidates.copy()
+        
+        if extend_cands:
+            for candidate in candidates:
+                for cand_neighbor in layer.neighbors(candidate):
+                    W.add(cand_neighbor)
+
+        W_d = set()
+        while (len(W) > 0) and (len(R) < self.M):
+            e, dist_e = self.get_nearest(layer_number, W, inserted_vector, return_distance=True)
+            W.remove(e)
+
+            if len(R) == 0:
+                R.add((e, dist_e))
+                continue
+
+            nearest_from_r, dist_from_r = self.get_nearest(layer_number, [elem[0] for elem in R], e, return_distance=True)
+            if dist_e < dist_from_r:
+                R.add((e, dist_e))
+            else:
+                W_d.add(e)
+
+        if keep_pruned:
+            while (len(W_d) > 0) and (len(R) < self.M):
+                e, dist_e = self.get_nearest(layer_number, W_d, inserted_vector, return_distance=True)
+                R.add((e, dist_e))
+
+        return R
+        
+
+    def add_edges(
         self, 
         layer_number: int, 
         node_id: int, 
@@ -178,23 +228,14 @@ class HNSW:
                 candidate,
                 distance=distance
             )
-            
 
-    def add_edges_heuristic(
-            self, 
-            layer_number: int, 
-            node_id: int, 
-            sorted_candidates: set[int]
-        ):
-        # TODO
-        pass
-
-
+    
     def get_nearest(
         self, 
         layer_number: int, 
         candidates: set[int], 
-        query: np.array
+        query: np.array,
+        return_distance=False
     ):
         """
             Gets the nearest element from the candidate list 
@@ -211,9 +252,11 @@ class HNSW:
         cands_dists = list(zip(candidates, distances))
         cands_dists = sorted(cands_dists, key=lambda x: x[1])
 
-        nearest_candidate = cands_dists[0][0]
+        if return_distance:
+            return cands_dists[0]
+        else:
+            return cands_dists[0][0]
 
-        return nearest_candidate
 
     def get_furthest(
         self, 
