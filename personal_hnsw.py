@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import networkx as nx
 import numpy as np
 import math
@@ -16,6 +17,18 @@ class HNSW:
         self.current_vector_id = 0
         self.efConstruction = efConstruction
         self.layers = [nx.Graph() for _ in range(layers)]
+
+        return None
+    
+    def build_index(self, sample: np.array):
+
+        print(f'Adding {sample.shape[0]} vectors to HNSW')
+        for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
+            self.insert(vector)
+
+        self.clean_layers()
+
+        return None
 
     def clean_layers(self):
         """

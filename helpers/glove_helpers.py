@@ -8,12 +8,6 @@ import pickle
 
 def ann(index, sample):
 
-    print(f'Adding {sample.shape[0]} vectors to HNSW')
-    for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
-        index.insert(vector)
-
-    index.clean_layers()
-
     start = time.time()
     nearest_to_queries_ann = {}
     for idx, query in tqdm(enumerate(sample), desc='Finding ANNs', total=sample.shape[0]):
@@ -34,7 +28,7 @@ def load_brute_force(dim, limit):
     return data
 
 
-def load_glove(dim=50, limit=None):
+def load_glove(dim=50, limit=None, include_words=False):
     if limit:
         total = limit
     else:
@@ -43,15 +37,18 @@ def load_glove(dim=50, limit=None):
     embeddings = []
     with open(f'/home/gamal/glove_dataset/glove.6B.{dim}d.txt', 'r') as file:
         c = 0
+        words = []
         for line in tqdm(file, total=total, desc='Loading embeddings'):
-            line = line.strip().split(' ')[1:]
-            line = list(map(float, line))
-            embeddings.append(line)
+            line = line.strip().split(' ')
+            word, emb = line[0], line[1:]
+            emb = list(map(float, emb))
+            embeddings.append(emb)
+            words.append(word)
             c += 1
             if c >= limit:
                 break
 
-    return np.array(embeddings)    
+    return (np.array(embeddings), words) if include_words else np.array(embeddings) 
 
 def brute_force_nn(
         n: int, 
