@@ -16,7 +16,7 @@ if __name__ == '__main__':
     bruteforce_data = load_brute_force(dim=dim, limit=limit)
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
 
-    index = HNSW(M=5, Mmax=10, mL=2, efConstruction=5)
+    index = HNSW(M=35)
     index.build_index(embeddings)
     index.clean_layers()
 

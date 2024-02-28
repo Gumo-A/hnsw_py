@@ -9,15 +9,19 @@ class HNSW:
         self,
         M=2,
         Mmax=6,
+        Mmax0=None,
         mL=None,
         layers=7,
         efConstruction=5
     ):
         self.M = M
-        self.Mmax = Mmax
+
+        self.Mmax = M if Mmax is None else Mmax
+        self.Mmax0 = M*2 if Mmax0 is None else Mmax0
         self.mL = 1/np.log(M) if mL is None else mL
+        self.efConstruction = M if efConstruction is None else efConstruction
+
         self.current_vector_id = 0
-        self.efConstruction = efConstruction
         self.layers = [nx.Graph() for _ in range(layers)]
 
         return None
