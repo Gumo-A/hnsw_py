@@ -8,11 +8,13 @@ class HNSW:
     def __init__(
         self,
         M=2,
+        Mmax=6,
         mL=None,
         layers=7,
         efConstruction=5
     ):
         self.M = M
+        self.Mmax = Mmax
         self.mL = 1/np.log(M) if mL is None else mL
         self.current_vector_id = 0
         self.efConstruction = efConstruction
@@ -59,7 +61,10 @@ class HNSW:
                 )
         return None
         
-    def ann_by_vector(self, vector, n):
+    def ann_by_vector(self, vector, n, ef):
+        if ef is None:
+            ef = self.efConstruction
+
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
 
@@ -68,7 +73,7 @@ class HNSW:
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
-                ef=1
+                ef=ef
             )
 
         neighbors = self.select_neighbors_simple(
@@ -134,7 +139,9 @@ class HNSW:
             neighbors_to_connect = self.select_neighbors_heuristic(
                 layer_number=layer_number,
                 inserted_node=self.current_vector_id,
-                candidates=ep
+                candidates=ep,
+                extend_cands=True,
+                keep_pruned=True
             )
             
             self.add_edges(
@@ -143,10 +150,33 @@ class HNSW:
                 sorted_candidates=neighbors_to_connect
             )
 
-            # TODO: shrink connections if they exceed Mmax
+            layer = self.layers[layer_number]
+            for neighbor, dist in neighbors_to_connect:
+                if layer.degree[neighbor] > self.Mmax:
+                    old_neighbors = list(layer.neighbors(neighbor))
+                    new_neighbors = self.select_neighbors_heuristic(
+                        layer_number,
+                        neighbor,
+                        old_neighbors
+                    )
+                    for old in old_neighbors:
+                        layer.remove_edge(neighbor, old)
+
+                    self.add_edges(
+                        layer_number,
+                        neighbor,
+                        new_neighbors
+                    )
 
         self.current_vector_id += 1
 
+    def get_average_degrees(self):
+        degrees = {}
+        for idx, layer in enumerate(self.layers):
+            layer_degrees = layer.degree()
+            layer_degrees = list(map(lambda x: x[1], layer_degrees))
+            degrees[idx] = np.array(layer_degrees).mean()
+        return degrees
 
     def select_neighbors_simple(
         self, 

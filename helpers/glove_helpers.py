@@ -11,7 +11,7 @@ def ann(index, sample):
     start = time.time()
     nearest_to_queries_ann = {}
     for idx, query in tqdm(enumerate(sample), desc='Finding ANNs', total=sample.shape[0]):
-        anns = index.ann_by_vector(query, 10)
+        anns = index.ann_by_vector(vector=query, n=10, ef=None)
         nearest_to_queries_ann[idx] = anns[:10]
     end = time.time()
     ann_time = round(end - start, 2)
@@ -97,6 +97,8 @@ def get_measures(nearest_to_queries, nearest_to_queries_ann):
 
     measures = defaultdict(list)
     for key, value in nearest_to_queries_ann.items():
-        measures['acc@1'].append(value[0] == nearest_to_queries[key][0])
+        true_nns = list(map(lambda x: x[0], nearest_to_queries[key]))
+        for ann, dist in value:
+            measures['recall@10'].append(ann in true_nns)
 
-    return np.array(measures['acc@1'])
+    return np.array(measures['recall@10'])

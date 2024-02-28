@@ -16,15 +16,13 @@ if __name__ == '__main__':
     bruteforce_data = load_brute_force(dim=dim, limit=limit)
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
 
-    n = np.random.randint(0, len(words))
-    print('Word:', words[n])
-    print('Nearest neighbors:' , [words[i[0]] for i in bruteforce_data[n]])
+    index = HNSW(M=5, Mmax=10, mL=2, efConstruction=5)
+    index.build_index(embeddings)
+    index.clean_layers()
 
-    # index = HNSW()
-    # index.build_index(embeddings)
-    # anns, elapsed_time = ann(index, embeddings)
-    # print(list(anns.items())[:10])
-    # measures = get_measures(bruteforce_data, anns)
-    # print(measures.mean())
+    anns, elapsed_time = ann(index, embeddings)
 
+    measures = get_measures(bruteforce_data, anns)
+    print(measures.mean())
 
+    print(index.get_average_degrees())
