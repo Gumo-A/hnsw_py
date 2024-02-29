@@ -8,7 +8,7 @@ class HNSW:
     def __init__(
         self,
         M=2,
-        Mmax=6,
+        Mmax=None,
         Mmax0=None,
         mL=None,
         layers=7,
@@ -90,9 +90,15 @@ class HNSW:
 
     def insert(self, vector):
 
+
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
         l = math.floor(-np.log(np.random.random())*self.mL)
+
+        if self.current_vector_id in [310, 456, 541, 278]:
+            print("Prob begin")
+            print('L', L)
+            print('l', l)
 
         while l > L:
             self.layers.append(nx.Graph())
@@ -134,12 +140,6 @@ class HNSW:
                 ef=self.efConstruction
             )
 
-            # neighbors_to_connect = self.select_neighbors_simple(
-            #     layer_number=layer_number,
-            #     inserted_node=self.current_vector_id,
-            #     candidates=ep
-            # )
-
             neighbors_to_connect = self.select_neighbors_heuristic(
                 layer_number=layer_number,
                 inserted_node=self.current_vector_id,
@@ -147,6 +147,9 @@ class HNSW:
                 extend_cands=True,
                 keep_pruned=True
             )
+
+            if len(neighbors_to_connect) == 0:
+                print('EMPTY')
             
             self.add_edges(
                 layer_number=layer_number,
@@ -156,15 +159,34 @@ class HNSW:
 
             layer = self.layers[layer_number]
             for neighbor, dist in neighbors_to_connect:
-                if layer.degree[neighbor] > self.Mmax:
-                    old_neighbors = list(layer.neighbors(neighbor))
+                if (
+                    ((layer.degree[neighbor] > self.Mmax) and (layer_number > 0)) or
+                    ((layer.degree[neighbor] > self.Mmax0) and (layer_number == 0))
+                ):
+
+                    old_neighbors = set(layer.neighbors(neighbor))
+
+                    # one of the reasons for nodes with no connexions
+                    # but I dont think the problem lies here
+                    # I think its normal to include this node in the 
+                    # old neighbors
+                    # if self.current_vector_id in old_neighbors:
+                    #     old_neighbors.remove(self.current_vector_id)
+                    #     print('dit it')
+
                     new_neighbors = self.select_neighbors_heuristic(
                         layer_number,
                         neighbor,
-                        old_neighbors
+                        old_neighbors,
+                        extend_cands=True,
+                        keep_pruned=True
                     )
+
                     for old in old_neighbors:
                         layer.remove_edge(neighbor, old)
+
+                    # if len(new_neighbors) == 0:
+                    #     print('EMPTY')
 
                     self.add_edges(
                         layer_number,
@@ -237,14 +259,15 @@ class HNSW:
         if extend_cands:
             for candidate in candidates:
                 for cand_neighbor in layer.neighbors(candidate):
-                    W.add(cand_neighbor)
+                    if cand_neighbor != inserted_node:
+                        W.add(cand_neighbor)
 
         W_d = set()
         while (len(W) > 0) and (len(R) < self.M):
             e, dist_e = self.get_nearest(layer_number, W, inserted_vector, return_distance=True)
             W.remove(e)
 
-            if len(R) == 0:
+            if (len(R) == 0):
                 R.add((e, dist_e))
                 continue
 
@@ -257,9 +280,17 @@ class HNSW:
         if keep_pruned:
             while (len(W_d) > 0) and (len(R) < self.M):
                 e, dist_e = self.get_nearest(layer_number, W_d, inserted_vector, return_distance=True)
+                W_d.remove(e)
                 R.add((e, dist_e))
 
-        return R
+        for e in R:
+            if e[0] == inserted_node:
+                print('prob')
+
+        if len(R) == 0:
+            print('prob')
+
+        return sorted(list(R), key=lambda x: x[1])
         
 
     def add_edges(

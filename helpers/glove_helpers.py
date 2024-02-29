@@ -6,12 +6,12 @@ import numpy as np
 import pickle
 
 
-def ann(index, sample):
+def ann(index, sample, ef=10):
 
     start = time.time()
     nearest_to_queries_ann = {}
     for idx, query in tqdm(enumerate(sample), desc='Finding ANNs', total=sample.shape[0]):
-        anns = index.ann_by_vector(vector=query, n=10, ef=None)
+        anns = index.ann_by_vector(vector=query, n=10, ef=ef)
         nearest_to_queries_ann[idx] = anns[:10]
     end = time.time()
     ann_time = round(end - start, 2)
