@@ -1,4 +1,4 @@
-# HNSW
+# Hierarchical Navigable Small Worlds (HNSW)
 
 I am trying to implement the HNSW index for ANN search. 
 
