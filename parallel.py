@@ -1,46 +1,60 @@
+from multiprocessing import Pool
+import multiprocessing 
 import networkx as nx
-import threading
+import numpy as np
+import time
 
-def task(graph, nodes, num):
-    print(f"Task {num} started")
-    for node in nodes:
-        graph.add_node(node)
-    print(f"Task {num} completed")
 
-num_threads = 7
-graph = nx.Graph()
-nodes = [i for i in range(40000000)]
+def brute_force(sample, queries):
+    for query in queries:
+        for vector in sample:
+            np.dot(query, vector)
 
-def split_nodes(nodes, threads: int):
-    nodes_per_split = len(nodes) // threads
+def split(queries, num_splits):
+    per_split = queries.shape[0] // num_splits
 
     splits = []
-    buffer = 0
-    for thread in range(threads):
-        splits.append(nodes[buffer:buffer+nodes_per_split])
+    buffer =0
+    for i in range(num_splits):
+        splits.append(queries[buffer:buffer+per_split, :])
+        buffer += per_split
 
-        if thread == (threads - 1):
-            break
+        if i == (num_splits - 1): break
 
-        buffer += nodes_per_split
-
-    splits[-1] = nodes[buffer:]    
+    splits[-1] = queries[buffer:, :]
 
     return splits
 
-threads = []
-splits = split_nodes(nodes, num_threads)
-for i in range(num_threads):
-    print(len(splits[i]))
-    thread = threading.Thread(target=task, args=(graph, splits[i], i))
-    threads.append(thread)
+if __name__ == '__main__':
 
-for thread in threads:
-    thread.start()
+    # We can further improve this by using the Manager object from 
+    # multiprocessing to store the results of each process and then
+    # merge them.
+    # This will be useful for brute force computation of NNs and
+    # for parallelization of the insertion process of the index.
+    # Although I still don't know exactly how I am going to do that.
+    np.random.seed(seed=1)
 
-for thread in threads:
-    thread.join()
+    n = 400000
+    dim = 50
+    sample = np.random.random((n, dim))
+    queries = np.random.random((1000, dim))
 
-print("All threads completed")
+    start = time.time()
+    brute_force(sample, queries)
+    end = time.time()
 
-print(graph)
+    print("Single thread process completed, elapsed time:", end - start)
+
+    num_processes = multiprocessing.cpu_count()
+    splits = split(queries, num_processes)
+    splits = [(sample, split) for split in splits]
+    start = time.time()
+    with Pool(processes=num_processes) as pool:
+        results = pool.starmap(brute_force, splits)
+    end = time.time()
+
+    print("All threads completed, elapsed time:", end - start)
+
+
+
