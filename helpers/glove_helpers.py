@@ -45,7 +45,7 @@ def load_glove(dim=50, limit=None, include_words=False):
             embeddings.append(emb)
             words.append(word)
             c += 1
-            if c >= limit:
+            if c >= total:
                 break
 
     return (np.array(embeddings), words) if include_words else np.array(embeddings) 
