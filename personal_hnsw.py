@@ -87,9 +87,10 @@ class HNSW:
         )
         return neighbors
 
-    def insert(self, vector):
+    def insert(self, vector, node_id=None):
 
-
+        node_id = self.current_vector_id if node_id is None else node_id
+        
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
         l = math.floor(-np.log(np.random.random())*self.mL)
@@ -117,13 +118,13 @@ class HNSW:
         for layer_number in range(l, -1, -1):
             if self.layers[layer_number].order() == 0:
                 self.layers[layer_number].add_node(
-                    self.current_vector_id, 
+                    node_id, 
                     vector=vector
                 )
                 continue
 
             self.layers[layer_number].add_node(
-                self.current_vector_id, 
+                node_id, 
                 vector=vector
             )
 
@@ -136,7 +137,7 @@ class HNSW:
 
             neighbors_to_connect = self.select_neighbors_heuristic(
                 layer_number=layer_number,
-                inserted_node=self.current_vector_id,
+                inserted_node=node_id,
                 candidates=ep,
                 extend_cands=True,
                 keep_pruned=True
@@ -144,7 +145,7 @@ class HNSW:
 
             self.add_edges(
                 layer_number=layer_number,
-                node_id=self.current_vector_id, 
+                node_id=node_id, 
                 sorted_candidates=neighbors_to_connect
             )
 
@@ -164,8 +165,8 @@ class HNSW:
                     # but I dont think the problem lies here
                     # I think its normal to include this node in the 
                     # old neighbors
-                    # if self.current_vector_id in old_neighbors:
-                    #     old_neighbors.remove(self.current_vector_id)
+                    # if node_id in old_neighbors:
+                    #     old_neighbors.remove(node_id
                     #     print('dit it')
 
                     new_neighbors = self.select_neighbors_heuristic(
@@ -189,7 +190,24 @@ class HNSW:
                         print(layer.degree(842))
 
 
-        self.current_vector_id += 1
+        if node_id is None:
+            self.current_vector_id += 1
+
+    def get_friendless_nodes(self):
+        friendless = []
+        for layer in layers:
+            for node in layer.nodes():
+                if layer.degree(node) == 0:
+                    friendless.append(node)
+        return friendless
+
+    def reinsert_friendless_nodes():
+        friendless = self.get_friendless_nodes()
+        for layer in self.layers:
+            for node in friendless:
+                if layer.degree(node) == 0:
+                    vector = layer.nodes()[node]['vector']
+                    self.insert(vector, node)
 
     def get_average_degrees(self):
         degrees = {}
