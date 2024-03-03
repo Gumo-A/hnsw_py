@@ -22,28 +22,25 @@ if __name__ == '__main__':
 
     index = HNSW(
         M=6,
-        Mmax=16,
-        Mmax0=32,
-        mL=1,
+        # Mmax=16,
+        # Mmax0=32,
+        # mL=1,
         efConstruction=5
     )
     index.build_index(embeddings)
-    index.clean_layers()
-
-    # for ef in [1, 3, 5, 7, 16]:
-
-    #     print(f'Finding ANNs with ef={ef}')
-    #     anns, elapsed_time = ann(index, embeddings, ef=ef)
-
-    #     measures = get_measures(bruteforce_data, anns)
-    #     print(measures.mean())
 
     print(index.get_average_degrees()) 
 
     for layer in index.layers:
         for node in layer.nodes():
             if layer.degree(node) == 0:
-                print(node)
+                print('Friendless node', node)
+
+    # for ef in [1, 3, 5, 7, 16]:
+    #     print(f'Finding ANNs with ef={ef}')
+    #     anns, elapsed_time = ann(index, embeddings, ef=ef)
+    #     measures = get_measures(bruteforce_data, anns)
+    #     print(measures.mean())
 
     # for layer in index.layers:
     #     nx.draw(layer)

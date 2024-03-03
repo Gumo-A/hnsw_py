@@ -11,18 +11,17 @@ class HNSW:
         Mmax=None,
         Mmax0=None,
         mL=None,
-        layers=7,
-        efConstruction=5
+        efConstruction=5,
+        initial_layers=7,
     ):
         self.M = M
-
-        self.Mmax = M if Mmax is None else Mmax
         self.Mmax0 = M*2 if Mmax0 is None else Mmax0
+        self.Mmax = int(round(self.Mmax0*0.75)) if Mmax is None else Mmax
         self.mL = 1/np.log(M) if mL is None else mL
-        self.efConstruction = M if efConstruction is None else efConstruction
+        self.efConstruction = self.Mmax0 if efConstruction is None else efConstruction
 
         self.current_vector_id = 0
-        self.layers = [nx.Graph() for _ in range(layers)]
+        self.layers = [nx.Graph() for _ in range(initial_layers)]
 
         return None
     
@@ -95,11 +94,6 @@ class HNSW:
         L = len(self.layers) - 1
         l = math.floor(-np.log(np.random.random())*self.mL)
 
-        if self.current_vector_id in [310, 456, 541, 278]:
-            print("Prob begin")
-            print('L', L)
-            print('l', l)
-
         while l > L:
             self.layers.append(nx.Graph())
             L += 1
@@ -148,9 +142,6 @@ class HNSW:
                 keep_pruned=True
             )
 
-            if len(neighbors_to_connect) == 0:
-                print('EMPTY')
-            
             self.add_edges(
                 layer_number=layer_number,
                 node_id=self.current_vector_id, 
@@ -165,6 +156,9 @@ class HNSW:
                 ):
 
                     old_neighbors = set(layer.neighbors(neighbor))
+
+                    if 842 in old_neighbors:
+                        print(layer.degree(842))
 
                     # one of the reasons for nodes with no connexions
                     # but I dont think the problem lies here
@@ -185,14 +179,15 @@ class HNSW:
                     for old in old_neighbors:
                         layer.remove_edge(neighbor, old)
 
-                    # if len(new_neighbors) == 0:
-                    #     print('EMPTY')
-
                     self.add_edges(
                         layer_number,
                         neighbor,
                         new_neighbors
                     )
+
+                    if 842 in old_neighbors:
+                        print(layer.degree(842))
+
 
         self.current_vector_id += 1
 
