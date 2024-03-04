@@ -285,8 +285,8 @@ class HNSW:
             if e[0] == inserted_node:
                 print('prob')
 
-        if len(R) == 0:
-            print('prob')
+        # if len(R) == 0:
+        #     print('prob')
 
         return sorted(list(R), key=lambda x: x[1])
         
