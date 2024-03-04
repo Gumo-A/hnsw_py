@@ -21,11 +21,11 @@ if __name__ == '__main__':
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
 
     index = HNSW(
-        M=16,
+        M=28,
         # Mmax=16,
         # Mmax0=32,
         # mL=1,
-        efConstruction=5
+        efConstruction=6
     )
     index.build_index(embeddings)
 
@@ -38,7 +38,8 @@ if __name__ == '__main__':
             if layer.degree(node) == 0:
                 print('Friendless node', node)
 
-    for ef in [1, 3, 5, 7, 16]:
+    # for ef in [1, 3, 5, 7]:
+    for ef in [32]:
         print(f'Finding ANNs with ef={ef}')
         anns, elapsed_time = ann(index, embeddings, ef=ef)
         measures = get_measures(bruteforce_data, anns)
