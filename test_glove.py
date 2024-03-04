@@ -25,13 +25,13 @@ if __name__ == '__main__':
         # Mmax=16,
         # Mmax0=32,
         # mL=1,
-        efConstruction=6
+        # efConstruction=38
     )
     index.build_index(embeddings)
 
     print(index.get_average_degrees()) 
 
-    index.reinsert_friendless_nodes()
+    # index.reinsert_friendless_nodes()
 
     for layer in index.layers:
         for node in layer.nodes():

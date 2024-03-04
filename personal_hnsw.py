@@ -7,12 +7,12 @@ import math
 class HNSW:
     def __init__(
         self,
-        M=2,
+        M=16,
         Mmax=None,
         Mmax0=None,
         mL=None,
-        efConstruction=5,
-        initial_layers=7,
+        efConstruction=None,
+        initial_layers=8,
     ):
         self.M = M
         self.Mmax0 = M*2 if Mmax0 is None else Mmax0
@@ -48,6 +48,8 @@ class HNSW:
 
         self.layers = self.layers[:max_layer_to_keep]
 
+        return None
+
     def determine_layer(self):
         return math.floor(-np.log(np.random.random())*self.mL)
         
@@ -62,11 +64,14 @@ class HNSW:
                         )
                     ]
                 )
+
         return None
         
+    def ann_by_id(self, node_id: int):
+        # TODO
+        pass
+
     def ann_by_vector(self, vector, n, ef):
-        if ef is None:
-            ef = self.efConstruction
 
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
@@ -85,7 +90,15 @@ class HNSW:
             candidates=ep,
             n=n
         )
-        return neighbors
+
+        # neighbors = self.search_layer(
+        #     layer_number=layer_number,
+        #     query=vector,
+        #     entry_point=ep,
+        #     ef=ef
+        # )
+
+        return list(neighbors)
 
     def insert(self, vector, node_reinsert=None):
 

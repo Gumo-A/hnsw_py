@@ -1,4 +1,6 @@
 from collections import defaultdict
+import multiprocessing
+from multiprocessing import Pool
 from tqdm import tqdm
 import time
 from personal_hnsw import HNSW
@@ -84,6 +86,22 @@ def brute_force_nn(
 
     return None
 
+def parallel_nn(embeddings, limit, dim, processes=None):
+    num_processes = processes if processes else multiprocessing.cpu_count()
+
+    splits, nb_per_split = split(embeddings, num_processes)
+    splits = [(10, embeddings, split, limit, dim, nb_per_split, i) for i, split in enumerate(splits)]
+
+    with Pool(processes=num_processes) as pool:
+        results = pool.starmap(brute_force_parallel, splits)
+
+    nearest_neighbors = {}
+    for result in results:
+        for idx, neighbors in result.items():
+            nearest_neighbors[idx] = neighbors
+
+    return nearest_neighbors
+
 def brute_force_parallel(
     n: int,
     all_emb: np.array,
@@ -134,8 +152,8 @@ def brute_force_parallel(
     return nearest_neighbors
     
 
-def write_brute_force_nn(nearest_neighbors: dict[list], limit, dim):
-    path = f'/home/gamal/glove_dataset/brute_force/parallel_lim_{limit}_dim_{dim}'
+def write_brute_force_nn(nearest_neighbors: dict[list], limit, dim, name_append=''):
+    path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}{name_append}'
     with open(path, 'wb') as file:
         pickle.dump(nearest_neighbors, file)
 
@@ -149,9 +167,12 @@ def get_distance(a, b, b_matrix=False):
     
 def get_measures(nearest_to_queries, nearest_to_queries_ann):
 
+    print(nearest_to_queries_ann[4])
+    print(nearest_to_queries[4])
     measures = defaultdict(list)
     for key, value in nearest_to_queries_ann.items():
         true_nns = list(map(lambda x: x[0], nearest_to_queries[key]))
+        # for ann in value:
         for ann, dist in value:
             measures['recall@10'].append(ann in true_nns)
 
@@ -162,14 +183,10 @@ def split(queries, num_splits):
     per_split = queries.shape[0] // num_splits
 
     splits = []
-    buffer =0
+    buffer = 0
     for i in range(num_splits):
         splits.append(queries[buffer:buffer+per_split, :])
         buffer += per_split
-
-        if i == (num_splits - 1): break
-
-    splits[-1] = queries[buffer:, :]
 
     return splits, per_split
 
