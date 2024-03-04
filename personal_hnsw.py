@@ -87,9 +87,9 @@ class HNSW:
         )
         return neighbors
 
-    def insert(self, vector, node_id=None):
+    def insert(self, vector, node_reinsert=None):
 
-        node_id = self.current_vector_id if node_id is None else node_id
+        node_id = self.current_vector_id if node_reinsert is None else node_reinsert
         
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
@@ -158,17 +158,6 @@ class HNSW:
 
                     old_neighbors = set(layer.neighbors(neighbor))
 
-                    if 842 in old_neighbors:
-                        print(layer.degree(842))
-
-                    # one of the reasons for nodes with no connexions
-                    # but I dont think the problem lies here
-                    # I think its normal to include this node in the 
-                    # old neighbors
-                    # if node_id in old_neighbors:
-                    #     old_neighbors.remove(node_id
-                    #     print('dit it')
-
                     new_neighbors = self.select_neighbors_heuristic(
                         layer_number,
                         neighbor,
@@ -186,28 +175,24 @@ class HNSW:
                         new_neighbors
                     )
 
-                    if 842 in old_neighbors:
-                        print(layer.degree(842))
 
-
-        if node_id is None:
+        if node_reinsert is None:
             self.current_vector_id += 1
 
     def get_friendless_nodes(self):
         friendless = []
-        for layer in layers:
+        for layer in self.layers:
             for node in layer.nodes():
-                if layer.degree(node) == 0:
+                if layer.degree[node] == 0:
                     friendless.append(node)
         return friendless
 
-    def reinsert_friendless_nodes():
+    def reinsert_friendless_nodes(self):
+
         friendless = self.get_friendless_nodes()
-        for layer in self.layers:
-            for node in friendless:
-                if layer.degree(node) == 0:
-                    vector = layer.nodes()[node]['vector']
-                    self.insert(vector, node)
+        for node in friendless:
+            vector = self.layers[0].nodes()[node]['vector']
+            self.insert(vector, node)
 
     def get_average_degrees(self):
         degrees = {}

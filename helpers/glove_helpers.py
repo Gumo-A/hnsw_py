@@ -134,8 +134,8 @@ def brute_force_parallel(
     return nearest_neighbors
     
 
-def write_brute_force_nn(nearest_neighbors: dict[list]):
-    path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}'
+def write_brute_force_nn(nearest_neighbors: dict[list], limit, dim):
+    path = f'/home/gamal/glove_dataset/brute_force/parallel_lim_{limit}_dim_{dim}'
     with open(path, 'wb') as file:
         pickle.dump(nearest_neighbors, file)
 

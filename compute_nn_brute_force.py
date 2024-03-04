@@ -37,3 +37,5 @@ if __name__ == '__main__':
     parallel_neighbors = nearest_neighbors[n]
     print(test_neighbors)
     print(parallel_neighbors)
+
+    write_brute_force_nn(nearest_neighbors, limit, dim)
