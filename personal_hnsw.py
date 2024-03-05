@@ -12,6 +12,7 @@ class HNSW:
         Mmax0=None,
         mL=None,
         efConstruction=None,
+        angular=False,
         initial_layers=8,
     ):
         self.M = M
@@ -22,10 +23,14 @@ class HNSW:
 
         self.current_vector_id = 0
         self.layers = [nx.Graph() for _ in range(initial_layers)]
+        self.angular = angular
 
         return None
     
     def build_index(self, sample: np.array):
+
+        # if self.angular:
+        sample = self.normalize_vectors(sample)
 
         print(f'Adding {sample.shape[0]} vectors to HNSW')
         for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
@@ -38,7 +43,7 @@ class HNSW:
     def clean_layers(self):
         """
             Removes all empty layers from the top of the
-            layers stack
+            layers stack.
         """
 
         max_layer_to_keep = len(self.layers) - 1
@@ -88,7 +93,7 @@ class HNSW:
             layer_number=0,
             inserted_node=vector,
             candidates=ep,
-            n=n
+            n=n+1
         )
 
         # neighbors = self.search_layer(
@@ -98,7 +103,7 @@ class HNSW:
         #     ef=ef
         # )
 
-        return list(neighbors)
+        return list(neighbors)[1:]
 
     def insert(self, vector, node_reinsert=None):
 
@@ -129,14 +134,17 @@ class HNSW:
 
         # step 2
         for layer_number in range(l, -1, -1):
-            if self.layers[layer_number].order() == 0:
-                self.layers[layer_number].add_node(
+
+            layer = self.layers[layer_number]
+
+            if layer.order() == 0:
+                layer.add_node(
                     node_id, 
                     vector=vector
                 )
                 continue
 
-            self.layers[layer_number].add_node(
+            layer.add_node(
                 node_id, 
                 vector=vector
             )
@@ -152,21 +160,20 @@ class HNSW:
                 layer_number=layer_number,
                 inserted_node=node_id,
                 candidates=ep,
-                extend_cands=True,
-                keep_pruned=True
+                # extend_cands=True,
+                # keep_pruned=True
             )
 
             self.add_edges(
-                layer_number=layer_number,
+                layer=layer,
                 node_id=node_id, 
                 sorted_candidates=neighbors_to_connect
             )
 
-            layer = self.layers[layer_number]
             for neighbor, dist in neighbors_to_connect:
                 if (
-                    ((layer.degree[neighbor] > self.Mmax) and (layer_number > 0)) or
-                    ((layer.degree[neighbor] > self.Mmax0) and (layer_number == 0))
+                    ((layer_number > 0) and (layer.degree[neighbor] > self.Mmax)) or
+                    ((layer_number == 0) and (layer.degree[neighbor] > self.Mmax0))
                 ):
 
                     old_neighbors = set(layer.neighbors(neighbor))
@@ -183,7 +190,7 @@ class HNSW:
                         layer.remove_edge(neighbor, old)
 
                     self.add_edges(
-                        layer_number,
+                        layer,
                         neighbor,
                         new_neighbors
                     )
@@ -223,7 +230,6 @@ class HNSW:
         n=None
     ):
 
-
         distances = []
         for candidate in candidates:
             candidate_vector = self.layers[layer_number] \
@@ -236,7 +242,7 @@ class HNSW:
                 inserted_vector = inserted_node
                 
             distances.append(
-                self.get_distance(candidate_vector, inserted_vector)
+                self.get_distance(candidate_vector, inserted_vector, )
             )
 
         if n is None:
@@ -282,7 +288,8 @@ class HNSW:
                 R.add((e, dist_e))
                 continue
 
-            nearest_from_r, dist_from_r = self.get_nearest(layer_number, [elem[0] for elem in R], e, return_distance=True)
+            e_vector = layer.nodes()[e]['vector']
+            nearest_from_r, dist_from_r = self.get_nearest(layer_number, [elem[0] for elem in R], e_vector, return_distance=True)
             if dist_e < dist_from_r:
                 R.add((e, dist_e))
             else:
@@ -294,25 +301,18 @@ class HNSW:
                 W_d.remove(e)
                 R.add((e, dist_e))
 
-        for e in R:
-            if e[0] == inserted_node:
-                print('prob')
-
-        # if len(R) == 0:
-        #     print('prob')
-
-        return sorted(list(R), key=lambda x: x[1])
+        return R
         
 
     def add_edges(
         self, 
-        layer_number: int, 
+        layer,
         node_id: int, 
         sorted_candidates: set[int]
     ):
         
         for candidate, distance in sorted_candidates:
-            self.layers[layer_number].add_edge(
+            layer.add_edge(
                 node_id,
                 candidate,
                 distance=distance
@@ -331,21 +331,23 @@ class HNSW:
             to the query
         """
 
-        distances = []
         layer = self.layers[layer_number]
+
+        # assert isinstance(query, np.ndarray), query
+
+        distances = []
 
         for candidate in candidates:
             vector = layer.nodes()[candidate]['vector'] 
-            distances.append(self.get_distance(vector, query))
+            distances.append(self.get_distance(vector, query, ))
 
         cands_dists = list(zip(candidates, distances))
-        cands_dists = sorted(cands_dists, key=lambda x: x[1])
+        cands_dists = min(cands_dists, key=lambda x: x[1])
 
         if return_distance:
-            return cands_dists[0]
+            return cands_dists[0], cands_dists[1]
         else:
-            return cands_dists[0][0]
-
+            return cands_dists[0]
 
     def get_furthest(
         self, 
@@ -357,18 +359,17 @@ class HNSW:
             Gets the furthest element from the candidate list to the query
         """
 
+        layer = self.layers[layer_number]
+
         distances = []
         for candidate in candidates:
-            vector = self.layers[layer_number]\
-                        .nodes()[candidate]['vector'] 
-            distances.append(self.get_distance(vector, query))
+            vector = layer.nodes()[candidate]['vector'] 
+            distances.append(self.get_distance(vector, query, ))
 
-        return sorted(
-            list(
-                zip(candidates, distances)
-            ), 
-            key=lambda x: x[1]
-        )[-1][0]
+        furthest = list(zip(candidates, distances))
+        furthest = max(furthest, key=lambda x: x[1])
+
+        return furthest[0]
 
 
     def search_layer(
@@ -394,11 +395,12 @@ class HNSW:
 
             cand_query_dist = self.get_distance(
                 layer.nodes()[c]['vector'],
-                query
+                query,
+                
             )
             furthest_query_dist = self.get_distance(
                 layer.nodes()[f]['vector'],
-                query
+                query,
             ) 
 
             if cand_query_dist > furthest_query_dist:
@@ -411,11 +413,11 @@ class HNSW:
 
                     neighbor_query_dist = self.get_distance(
                         layer.nodes()[neighbor]['vector'],
-                        query
+                        query,
                     )
                     furthest_query_dist = self.get_distance(
                         layer.nodes()[f]['vector'],
-                        query
+                        query,
                     )
 
                     if (neighbor_query_dist < furthest_query_dist) \
@@ -429,8 +431,19 @@ class HNSW:
         return W
 
     def get_distance(self, a, b, b_matrix=False):
-        if not b_matrix:
-            return np.linalg.norm(a-b)
+        angular = self.angular
+        if angular:
+            if not b_matrix:
+                return 1-np.dot(a, b)
+            else:
+                return 1-np.dot(a, b)
         else:
-            return np.linalg.norm(a-b, axis=1)
+            if not b_matrix:
+                return np.linalg.norm(a-b)
+            else:
+                return np.linalg.norm(a-b, axis=1)
 
+    def normalize_vectors(self, vectors):
+        norm = np.linalg.norm(vectors, axis=1)
+        norm = np.expand_dims(norm, axis=1)
+        return vectors/norm

@@ -22,7 +22,7 @@ def brute_force(sample, queries):
     for idx, query in enumerate(queries):
         distances = []
         for jdx, vector in enumerate(sample):
-            distances.append((jdx, index.get_distance(query, vector)))
+            distances.append((jdx, index.get_distance(query, vector, angular=True)))
 
         nearest_to_queries[idx] = sorted(distances, key=lambda x: x[1])[0]
     end = time.time()

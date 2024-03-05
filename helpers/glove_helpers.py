@@ -8,11 +8,12 @@ import numpy as np
 import pickle
 
 
-def ann(index, sample, ef=10):
+def ann(index, sample, sample_indices, ef=10):
 
     start = time.time()
     nearest_to_queries_ann = {}
     for idx, query in tqdm(enumerate(sample), desc='Finding ANNs', total=sample.shape[0]):
+        idx = sample_indices[idx]
         anns = index.ann_by_vector(vector=query, n=10, ef=ef)
         nearest_to_queries_ann[idx] = anns[:10]
     end = time.time()
@@ -25,7 +26,7 @@ def ann(index, sample, ef=10):
 
 
 def load_brute_force(dim, limit):
-    path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}'
+    path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}_parallel'
     with open(path, 'rb') as file:
         data = pickle.load(file)
     return data
@@ -167,13 +168,11 @@ def get_distance(a, b, b_matrix=False):
     
 def get_measures(nearest_to_queries, nearest_to_queries_ann):
 
-    print(nearest_to_queries_ann[4])
-    print(nearest_to_queries[4])
     measures = defaultdict(list)
-    for key, value in nearest_to_queries_ann.items():
-        true_nns = list(map(lambda x: x[0], nearest_to_queries[key]))
+    for node, neighbors_distances in nearest_to_queries_ann.items():
+        true_nns = list(map(lambda x: x[0], nearest_to_queries[node]))
         # for ann in value:
-        for ann, dist in value:
+        for ann, dist in neighbors_distances:
             measures['recall@10'].append(ann in true_nns)
 
     return np.array(measures['recall@10'])
