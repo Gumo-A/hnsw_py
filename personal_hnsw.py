@@ -181,27 +181,34 @@ class HNSW:
                     ((layer_number == 0) and (layer.degree[neighbor] > self.Mmax0))
                 ):
 
-                    old_neighbors = set(layer.neighbors(neighbor))
+                    limit = self.Mmax if layer_number > 0 else self.Mmax0
 
-                    new_neighbors = self.select_neighbors_heuristic(
-                        layer_number,
-                        neighbor,
-                        old_neighbors,
-                        extend_cands=True,
-                        keep_pruned=True
-                    )
+                    # old_neighbors = set(layer.neighbors(neighbor))
 
-                    old_edges = [(neighbor, old) for old in old_neighbors]
-                    layer.remove_edges_from(old_edges)
+                    # new_neighbors = self.select_neighbors_heuristic(
+                    #     layer_number,
+                    #     neighbor,
+                    #     old_neighbors,
+                    #     extend_cands=True,
+                    #     keep_pruned=True
+                    # )
+
+                    old_edges = list(layer.edges(neighbor, data=True))
+                    old_edges = sorted(old_edges, key=lambda x: x[2]['distance'])
+                    to_remove = old_edges[limit:]
+                    to_remove = list(map(lambda x: (x[0], x[1]), to_remove))
+
+                    # old_edges = [(neighbor, old) for old in old_neighbors]
+                    layer.remove_edges_from(to_remove)
 
                     # for old in old_neighbors:
                     #     layer.remove_edge(neighbor, old)
 
-                    self.add_edges(
-                        layer,
-                        neighbor,
-                        new_neighbors
-                    )
+                    # self.add_edges(
+                    #     layer,
+                    #     neighbor,
+                    #     new_neighbors
+                    # )
 
 
         if node_reinsert is None:

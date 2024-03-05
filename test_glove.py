@@ -38,7 +38,7 @@ if __name__ == '__main__':
                 print('Friendless node', node)
 
 
-    sample_size = 2000
+    sample_size = 500
     for ef in [4, 8, 16, 32]:
         sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
         print(f'Finding ANNs with ef={ef}')
