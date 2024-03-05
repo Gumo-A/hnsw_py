@@ -22,9 +22,11 @@ if __name__ == '__main__':
 
     index = HNSW(
         M=36, 
-        angular=False
+        # angular=False
     )
     index.build_index(embeddings)
+
+    print(index.distance_count)
 
     print(index.get_average_degrees()) 
     for layer in index.layers:

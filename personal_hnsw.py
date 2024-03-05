@@ -15,6 +15,8 @@ class HNSW:
         angular=False,
         initial_layers=8,
     ):
+        self.distance_count = 0
+        
         self.M = M
         self.Mmax0 = M*2 if Mmax0 is None else Mmax0
         self.Mmax = int(round(self.Mmax0*0.75)) if Mmax is None else Mmax
@@ -33,7 +35,7 @@ class HNSW:
             sample = self.normalize_vectors(sample)
 
         print(f'Adding {sample.shape[0]} vectors to HNSW')
-        for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
+        for vector in tqdm(sample, total=sample.shape[0]):
             self.insert(vector)
 
         self.clean_layers()
@@ -164,7 +166,7 @@ class HNSW:
                 inserted_node=node_id,
                 candidates=ep,
                 # extend_cands=True,
-                # keep_pruned=True
+                keep_pruned=True
             )
 
             self.add_edges(
@@ -189,8 +191,11 @@ class HNSW:
                         keep_pruned=True
                     )
 
-                    for old in old_neighbors:
-                        layer.remove_edge(neighbor, old)
+                    old_edges = [(neighbor, old) for old in old_neighbors]
+                    layer.remove_edges_from(old_edges)
+
+                    # for old in old_neighbors:
+                    #     layer.remove_edge(neighbor, old)
 
                     self.add_edges(
                         layer,
@@ -214,7 +219,7 @@ class HNSW:
 
         friendless = self.get_friendless_nodes()
         for node in friendless:
-            vector = self.layers[0].nodes()[node]['vector']
+            vector = self.layers[0]._node[node]['vector']
             self.insert(vector, node)
 
     def get_average_degrees(self):
@@ -236,16 +241,16 @@ class HNSW:
         distances = []
         for candidate in candidates:
             candidate_vector = self.layers[layer_number] \
-                                .nodes()[candidate]['vector'] 
+                                ._node[candidate]['vector'] 
 
             if isinstance(inserted_node, int):
                 inserted_vector = self.layers[layer_number] \
-                                    .nodes()[inserted_node]['vector']
+                                    ._node[inserted_node]['vector']
             else:
                 inserted_vector = inserted_node
                 
             distances.append(
-                self.get_distance(candidate_vector, inserted_vector, )
+                self.get_distance_l2(candidate_vector, inserted_vector)
             )
 
         if n is None:
@@ -272,7 +277,7 @@ class HNSW:
     ):
 
         layer = self.layers[layer_number]
-        inserted_vector = layer.nodes()[inserted_node]['vector']
+        inserted_vector = layer._node[inserted_node]['vector']
         R = set()
         W = candidates.copy()
         
@@ -291,7 +296,7 @@ class HNSW:
                 R.add((e, dist_e))
                 continue
 
-            e_vector = layer.nodes()[e]['vector']
+            e_vector = layer._node[e]['vector']
             nearest_from_r, dist_from_r = self.get_nearest(layer_number, [elem[0] for elem in R], e_vector, return_distance=True)
             if dist_e < dist_from_r:
                 R.add((e, dist_e))
@@ -313,13 +318,15 @@ class HNSW:
         node_id: int, 
         sorted_candidates: set[int]
     ):
+        edges = [(node_id, cand, {'distance': dist}) for cand, dist in sorted_candidates]
+        layer.add_edges_from(edges)
         
-        for candidate, distance in sorted_candidates:
-            layer.add_edge(
-                node_id,
-                candidate,
-                distance=distance
-            )
+        # for candidate, distance in sorted_candidates:
+        #     layer.add_edge(
+        #         node_id,
+        #         candidate,
+        #         distance=distance
+        #     )
 
     
     def get_nearest(
@@ -336,21 +343,23 @@ class HNSW:
 
         layer = self.layers[layer_number]
 
-        assert isinstance(query, np.ndarray), query
+        # assert isinstance(query, np.ndarray), query
 
-        distances = []
+        vectors = [layer._node[candidate]['vector'] for candidate in candidates]
+        distances = [self.get_distance_l2(query, vector) for vector in vectors]
 
-        for candidate in candidates:
-            vector = layer.nodes()[candidate]['vector'] 
-            distances.append(self.get_distance(vector, query, ))
+        # distances = []
+        # for candidate in candidates:
+        #     vector = layer._node[candidate]['vector'] 
+        #     distances.append(self.get_distance(vector, query, ))
 
-        cands_dists = list(zip(candidates, distances))
-        cands_dists = min(cands_dists, key=lambda x: x[1])
+        cands_dist = list(zip(candidates, distances))
+        cands_dist = min(cands_dist, key=lambda x: x[1])
 
         if return_distance:
-            return cands_dists[0], cands_dists[1]
+            return cands_dist[0], cands_dist[1]
         else:
-            return cands_dists[0]
+            return cands_dist[0]
 
     def get_furthest(
         self, 
@@ -364,10 +373,13 @@ class HNSW:
 
         layer = self.layers[layer_number]
 
-        distances = []
-        for candidate in candidates:
-            vector = layer.nodes()[candidate]['vector'] 
-            distances.append(self.get_distance(vector, query, ))
+        vectors = [layer._node[candidate]['vector'] for candidate in candidates]
+        distances = [self.get_distance_l2(query, vector) for vector in vectors]
+
+        # distances = []
+        # for candidate in candidates:
+        #     vector = layer._node[candidate]['vector'] 
+        #     distances.append(self.get_distance(vector, query))
 
         furthest = list(zip(candidates, distances))
         furthest = max(furthest, key=lambda x: x[1])
@@ -396,13 +408,13 @@ class HNSW:
             C.remove(c)
             f = self.get_furthest(layer_number, W, query)
 
-            cand_query_dist = self.get_distance(
-                layer.nodes()[c]['vector'],
+            cand_query_dist = self.get_distance_l2(
+                layer._node[c]['vector'],
                 query,
                 
             )
-            furthest_query_dist = self.get_distance(
-                layer.nodes()[f]['vector'],
+            furthest_query_dist = self.get_distance_l2(
+                layer._node[f]['vector'],
                 query,
             ) 
 
@@ -414,12 +426,12 @@ class HNSW:
                     v.add(neighbor)
                     f = self.get_furthest(layer_number, W, query)
 
-                    neighbor_query_dist = self.get_distance(
-                        layer.nodes()[neighbor]['vector'],
+                    neighbor_query_dist = self.get_distance_l2(
+                        layer._node[neighbor]['vector'],
                         query,
                     )
-                    furthest_query_dist = self.get_distance(
-                        layer.nodes()[f]['vector'],
+                    furthest_query_dist = self.get_distance_l2(
+                        layer._node[f]['vector'],
                         query,
                     )
 
@@ -433,24 +445,15 @@ class HNSW:
 
         return W
 
-    def get_distance(self, a, b, b_matrix=False):
-        angular = self.angular
-        if angular:
-            if not b_matrix:
-                return 1 - np.dot(a, b)
-                # cos_sim = np.dot(a, b)
-                # angular_distance = np.arccos(cos_sim)/math.pi
-                # return angular_distance
-            else:
-                return 1 - np.dot(a, b)
-                # cos_sim = np.dot(a, b.T)
-                # angular_distance = np.arccos(cos_sim)/math.pi
-                # return angular_distance
+    def get_distance_angular(self, a, b):
+        return 1 - np.dot(a, b)
+
+    def get_distance_l2(self, a, b, b_matrix=False):
+        self.distance_count += 1
+        if not b_matrix:
+            return np.linalg.norm(a-b)
         else:
-            if not b_matrix:
-                return np.linalg.norm(a-b)
-            else:
-                return np.linalg.norm(a-b, axis=1)
+            return np.linalg.norm(a-b, axis=1)
 
     def normalize_vectors(self, vectors, single_vector=False):
         if single_vector:
