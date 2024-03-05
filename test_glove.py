@@ -20,7 +20,10 @@ if __name__ == '__main__':
     bruteforce_data = load_brute_force(dim=dim, limit=limit)
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
 
-    index = HNSW(M=34, angular=False)
+    index = HNSW(
+        M=36, 
+        angular=False
+    )
     index.build_index(embeddings)
 
     print(index.get_average_degrees()) 
