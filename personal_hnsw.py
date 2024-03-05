@@ -29,8 +29,8 @@ class HNSW:
     
     def build_index(self, sample: np.array):
 
-        # if self.angular:
-        sample = self.normalize_vectors(sample)
+        if self.angular:
+            sample = self.normalize_vectors(sample)
 
         print(f'Adding {sample.shape[0]} vectors to HNSW')
         for idx, vector in tqdm(enumerate(sample), total=sample.shape[0]):
@@ -77,6 +77,9 @@ class HNSW:
         pass
 
     def ann_by_vector(self, vector, n, ef):
+
+        if self.angular:
+            vector = self.normalize_vectors(vector, single_vector=True)
 
         ep = self.get_entrypoint()
         L = len(self.layers) - 1
@@ -333,7 +336,7 @@ class HNSW:
 
         layer = self.layers[layer_number]
 
-        # assert isinstance(query, np.ndarray), query
+        assert isinstance(query, np.ndarray), query
 
         distances = []
 
@@ -434,16 +437,25 @@ class HNSW:
         angular = self.angular
         if angular:
             if not b_matrix:
-                return 1-np.dot(a, b)
+                return 1 - np.dot(a, b)
+                # cos_sim = np.dot(a, b)
+                # angular_distance = np.arccos(cos_sim)/math.pi
+                # return angular_distance
             else:
-                return 1-np.dot(a, b)
+                return 1 - np.dot(a, b)
+                # cos_sim = np.dot(a, b.T)
+                # angular_distance = np.arccos(cos_sim)/math.pi
+                # return angular_distance
         else:
             if not b_matrix:
                 return np.linalg.norm(a-b)
             else:
                 return np.linalg.norm(a-b, axis=1)
 
-    def normalize_vectors(self, vectors):
-        norm = np.linalg.norm(vectors, axis=1)
-        norm = np.expand_dims(norm, axis=1)
-        return vectors/norm
+    def normalize_vectors(self, vectors, single_vector=False):
+        if single_vector:
+            return vectors/np.linalg.norm(vectors)
+        else:
+            norm = np.linalg.norm(vectors, axis=1)
+            norm = np.expand_dims(norm, axis=1)
+            return vectors/norm

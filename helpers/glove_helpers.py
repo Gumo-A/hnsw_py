@@ -87,7 +87,7 @@ def brute_force_nn(
 
     return None
 
-def parallel_nn(embeddings, limit, dim, processes=None):
+def parallel_nn(embeddings, limit, dim, processes=None, angular=False):
     num_processes = processes if processes else multiprocessing.cpu_count()
 
     splits, nb_per_split = split(embeddings, num_processes)
@@ -110,7 +110,8 @@ def brute_force_parallel(
     limit=None,
     dim=50,
     per_split: int = None,
-    split_nb: int = None
+    split_nb: int = None,
+    angular: bool = False
 ):
     
     if limit:
@@ -126,7 +127,7 @@ def brute_force_parallel(
             total=emb.shape[0],
         ):
 
-            dists_vector = get_distance(emb[idx], all_emb, b_matrix=True)
+            dists_vector = get_distance(emb[idx], all_emb, b_matrix=True, angular=angular)
             dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
 
             dists_vector = sorted(
@@ -159,11 +160,23 @@ def write_brute_force_nn(nearest_neighbors: dict[list], limit, dim, name_append=
         pickle.dump(nearest_neighbors, file)
 
 
-def get_distance(a, b, b_matrix=False):
-    if not b_matrix:
-        return np.linalg.norm(a-b)
-    else:
-        return np.linalg.norm(a-b, axis=1)
+def get_distance(a, b, b_matrix=False, angular=False):
+        if angular:
+            if not b_matrix:
+                return 1 - np.dot(a, b)
+                # cos_sim = np.dot(a, b)
+                # angular_distance = np.arccos(cos_sim)/math.pi
+                # return angular_distance
+            else:
+                return 1 - np.dot(a, b)
+                # cos_sim = np.dot(a, b.T)
+                # angular_distance = np.arccos(cos_sim)/math.pi
+                # return angular_distance
+        else:
+            if not b_matrix:
+                return np.linalg.norm(a-b)
+            else:
+                return np.linalg.norm(a-b, axis=1)
 
     
 def get_measures(nearest_to_queries, nearest_to_queries_ann):

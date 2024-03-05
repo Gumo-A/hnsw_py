@@ -21,7 +21,8 @@ if __name__ == '__main__':
         embeddings=embeddings, 
         limit=limit, 
         dim=dim, 
-        processes=processes
+        processes=processes,
+        angular=True
     )
 
     write_brute_force_nn(nearest_neighbors, limit, dim, name_append='_parallel')
