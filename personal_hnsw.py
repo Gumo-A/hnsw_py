@@ -242,19 +242,26 @@ class HNSW:
             if isinstance(inserted_node, int):
                 inserted_vector = self.layers[layer_number] \
                                     ._node[inserted_node]['vector']
+                distances.append(
+                    self.get_distance(
+                        a=candidate_vector, 
+                        b=inserted_vector,
+                        a_id=candidate,
+                        b_id=inserted_node
+                    )
+                )
+
             else:
                 inserted_vector = inserted_node
-                
-            distances.append(
-                # TODO: fix for cache distances
-                # inserted node can be an array because of code above
-                self.get_distance(
-                    a=candidate_vector, 
-                    b=inserted_vector,
-                    a_id=candidate,
-                    b_id=inserted_node
+                distances.append(
+                    self.get_distance(
+                        a=candidate_vector, 
+                        b=inserted_vector,
+                        # a_id=candidate,
+                        # b_id=inserted_node
+                    )
                 )
-            )
+                
 
         if n is None:
             top_to_return = self.M
