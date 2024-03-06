@@ -13,11 +13,13 @@ class HNSW:
         mL=None,
         efConstruction=None,
         angular=False,
-        initial_layers=8,
+        initial_layers=1
     ):
         self.distance_count = 0
         self.cache_count = 0
         self.distances_cache = {}
+
+        self.ep = None
         
         self.M = M
         self.Mmax0 = M*2 if Mmax0 is None else Mmax0
@@ -62,20 +64,12 @@ class HNSW:
     def determine_layer(self):
         return math.floor(-np.log(np.random.random())*self.mL)
         
-    def get_entrypoint(self):
-
+    def define_entrypoint(self):
         for layer_number in range(len(self.layers)-1, -1, -1):
-            if len(self.layers[layer_number].nodes()) != 0:
-                return set(
-                    [
-                        np.random.choice(
-                            self.layers[layer_number].nodes()
-                        )
-                    ]
-                )
+            if self.layers[layer_number].order() != 0:
+                self.ep = set([np.random.choice(self.layers[layer_number].nodes())])
+                return None
 
-        return None
-        
     def ann_by_id(self, node_id: int):
         # TODO
         pass
@@ -85,7 +79,7 @@ class HNSW:
         if self.angular:
             vector = self.normalize_vectors(vector, single_vector=True)
 
-        ep = self.get_entrypoint()
+        ep = self.ep
         L = len(self.layers) - 1
 
         for layer_number in range(L, -1, -1):
@@ -117,13 +111,17 @@ class HNSW:
 
         node_id = self.current_vector_id if node_reinsert is None else node_reinsert
         
-        ep = self.get_entrypoint()
         L = len(self.layers) - 1
         l = math.floor(-np.log(np.random.random())*self.mL)
 
-        while l > L:
-            self.layers.append(nx.Graph())
-            L += 1
+        new_ep = False
+        if (l > L) or (self.ep is None):
+            while l > L:
+                self.layers.append(nx.Graph())
+                L += 1
+            new_ep = True
+
+        ep = self.ep
 
         # step 1
         for layer_number in range(L, l, -1):
@@ -201,6 +199,7 @@ class HNSW:
                     layer.remove_edges_from(to_remove)
 
 
+        self.define_entrypoint()
         if node_reinsert is None:
             self.current_vector_id += 1
 
