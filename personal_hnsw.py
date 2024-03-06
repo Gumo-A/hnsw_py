@@ -16,10 +16,11 @@ class HNSW:
         initial_layers=8,
     ):
         self.distance_count = 0
+        self.distances_cache = {}
         
         self.M = M
         self.Mmax0 = M*2 if Mmax0 is None else Mmax0
-        self.Mmax = int(round(self.Mmax0*0.75)) if Mmax is None else Mmax
+        self.Mmax = self.M if Mmax is None else Mmax
         self.mL = 1/np.log(M) if mL is None else mL
         self.efConstruction = self.Mmax0 if efConstruction is None else efConstruction
 
@@ -91,7 +92,8 @@ class HNSW:
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
-                ef=ef
+                ef=ef,
+                query_id=-1
             )
 
         neighbors = self.select_neighbors_simple(
@@ -132,9 +134,15 @@ class HNSW:
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
-                ef=1
+                ef=1,
+                query_id=self.current_vector_id
             )
-            ep = self.get_nearest(layer_number, W, vector)
+            ep = self.get_nearest(
+                layer_number, 
+                W, 
+                vector, 
+                query_id=self.current_vector_id
+            )
 
 
         # step 2
@@ -158,7 +166,8 @@ class HNSW:
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
-                ef=self.efConstruction
+                ef=self.efConstruction,
+                query_id=self.current_vector_id
             )
 
             neighbors_to_connect = self.select_neighbors_heuristic(
@@ -183,32 +192,12 @@ class HNSW:
 
                     limit = self.Mmax if layer_number > 0 else self.Mmax0
 
-                    # old_neighbors = set(layer.neighbors(neighbor))
-
-                    # new_neighbors = self.select_neighbors_heuristic(
-                    #     layer_number,
-                    #     neighbor,
-                    #     old_neighbors,
-                    #     extend_cands=True,
-                    #     keep_pruned=True
-                    # )
-
                     old_edges = list(layer.edges(neighbor, data=True))
                     old_edges = sorted(old_edges, key=lambda x: x[2]['distance'])
                     to_remove = old_edges[limit:]
                     to_remove = list(map(lambda x: (x[0], x[1]), to_remove))
 
-                    # old_edges = [(neighbor, old) for old in old_neighbors]
                     layer.remove_edges_from(to_remove)
-
-                    # for old in old_neighbors:
-                    #     layer.remove_edge(neighbor, old)
-
-                    # self.add_edges(
-                    #     layer,
-                    #     neighbor,
-                    #     new_neighbors
-                    # )
 
 
         if node_reinsert is None:
@@ -257,7 +246,14 @@ class HNSW:
                 inserted_vector = inserted_node
                 
             distances.append(
-                self.get_distance_l2(candidate_vector, inserted_vector)
+                # TODO: fix for cache distances
+                # inserted node can be an array because of code above
+                self.get_distance(
+                    a=candidate_vector, 
+                    b=inserted_vector,
+                    a_id=candidate,
+                    b_id=inserted_node
+                )
             )
 
         if n is None:
@@ -296,7 +292,13 @@ class HNSW:
 
         W_d = set()
         while (len(W) > 0) and (len(R) < self.M):
-            e, dist_e = self.get_nearest(layer_number, W, inserted_vector, return_distance=True)
+            e, dist_e = self.get_nearest(
+                layer_number, 
+                W, 
+                inserted_vector, 
+                query_id=inserted_vector, 
+                return_distance=True
+            )
             W.remove(e)
 
             if (len(R) == 0):
@@ -304,7 +306,13 @@ class HNSW:
                 continue
 
             e_vector = layer._node[e]['vector']
-            nearest_from_r, dist_from_r = self.get_nearest(layer_number, [elem[0] for elem in R], e_vector, return_distance=True)
+            nearest_from_r, dist_from_r = self.get_nearest(
+                layer_number, 
+                [elem[0] for elem in R], 
+                e_vector, 
+                query_id=e,
+                return_distance=True
+            )
             if dist_e < dist_from_r:
                 R.add((e, dist_e))
             else:
@@ -312,7 +320,13 @@ class HNSW:
 
         if keep_pruned:
             while (len(W_d) > 0) and (len(R) < self.M):
-                e, dist_e = self.get_nearest(layer_number, W_d, inserted_vector, return_distance=True)
+                e, dist_e = self.get_nearest(
+                    layer_number, 
+                    W_d, 
+                    inserted_vector, 
+                    query_id=inserted_node,
+                    return_distance=True
+                )
                 W_d.remove(e)
                 R.add((e, dist_e))
 
@@ -341,6 +355,7 @@ class HNSW:
         layer_number: int, 
         candidates: set[int], 
         query: np.array,
+        query_id: int,
         return_distance=False
     ):
         """
@@ -352,13 +367,20 @@ class HNSW:
 
         # assert isinstance(query, np.ndarray), query
 
-        vectors = [layer._node[candidate]['vector'] for candidate in candidates]
-        distances = [self.get_distance_l2(query, vector) for vector in vectors]
+        # vectors = [layer._node[candidate]['vector'] for candidate in candidates]
+        # distances = [self.get_distance(query, vector) for vector in vectors]
 
-        # distances = []
-        # for candidate in candidates:
-        #     vector = layer._node[candidate]['vector'] 
-        #     distances.append(self.get_distance(vector, query, ))
+        distances = []
+        for candidate in candidates:
+            vector = layer._node[candidate]['vector'] 
+            distances.append(
+                self.get_distance(
+                    a=vector, 
+                    b=query,
+                    a_id=candidate,
+                    b_id=query_id
+                )
+            )
 
         cands_dist = list(zip(candidates, distances))
         cands_dist = min(cands_dist, key=lambda x: x[1])
@@ -372,7 +394,8 @@ class HNSW:
         self, 
         layer_number: int, 
         candidates: set, 
-        query: np.array
+        query: np.array,
+        query_id: int
     ):
         """
             Gets the furthest element from the candidate list to the query
@@ -380,13 +403,20 @@ class HNSW:
 
         layer = self.layers[layer_number]
 
-        vectors = [layer._node[candidate]['vector'] for candidate in candidates]
-        distances = [self.get_distance_l2(query, vector) for vector in vectors]
+        # vectors = [layer._node[candidate]['vector'] for candidate in candidates]
+        # distances = [self.get_distance(query, vector) for vector in vectors]
 
-        # distances = []
-        # for candidate in candidates:
-        #     vector = layer._node[candidate]['vector'] 
-        #     distances.append(self.get_distance(vector, query))
+        distances = []
+        for candidate in candidates:
+            vector = layer._node[candidate]['vector'] 
+            distances.append(
+                self.get_distance(
+                    a=vector, 
+                    b=query,
+                    a_id=candidate,
+                    b_id=query_id
+                )
+            )
 
         furthest = list(zip(candidates, distances))
         furthest = max(furthest, key=lambda x: x[1])
@@ -399,7 +429,8 @@ class HNSW:
         layer_number: int, 
         query: np.array, 
         entry_point: set[int], 
-        ef: int
+        ef: int,
+        query_id: int
     ):
         v = set([entry_point]) if not isinstance(entry_point, set) \
                                 else entry_point.copy()
@@ -411,18 +442,31 @@ class HNSW:
         layer = self.layers[layer_number]
 
         while len(C) > 0:
-            c = self.get_nearest(layer_number, C, query)
-            C.remove(c)
-            f = self.get_furthest(layer_number, W, query)
-
-            cand_query_dist = self.get_distance_l2(
-                layer._node[c]['vector'],
-                query,
-                
+            c = self.get_nearest(
+                layer_number, 
+                C, 
+                query, 
+                query_id=query_id
             )
-            furthest_query_dist = self.get_distance_l2(
-                layer._node[f]['vector'],
+            C.remove(c)
+            f = self.get_furthest(
+                layer_number, 
+                W, 
                 query,
+                query_id=query_id
+            )
+
+            cand_query_dist = self.get_distance(
+                a=layer._node[c]['vector'],
+                b=query,
+                a_id=c,
+                b_id=query_id
+            )
+            furthest_query_dist = self.get_distance(
+                a=layer._node[f]['vector'],
+                b=query,
+                a_id=f,
+                b_id=query_id
             ) 
 
             if cand_query_dist > furthest_query_dist:
@@ -431,15 +475,24 @@ class HNSW:
             for neighbor in layer.neighbors(c):
                 if neighbor not in v:
                     v.add(neighbor)
-                    f = self.get_furthest(layer_number, W, query)
-
-                    neighbor_query_dist = self.get_distance_l2(
-                        layer._node[neighbor]['vector'],
+                    f = self.get_furthest(
+                        layer_number, 
+                        W, 
                         query,
+                        query_id=query_id
                     )
-                    furthest_query_dist = self.get_distance_l2(
-                        layer._node[f]['vector'],
-                        query,
+
+                    neighbor_query_dist = self.get_distance(
+                        a=layer._node[neighbor]['vector'],
+                        b=query,
+                        a_id=neighbor,
+                        b_id=query_id
+                    )
+                    furthest_query_dist = self.get_distance(
+                        a=layer._node[f]['vector'],
+                        b=query,
+                        a_id=f,
+                        b_id=query_id
                     )
 
                     if (neighbor_query_dist < furthest_query_dist) \
@@ -451,6 +504,36 @@ class HNSW:
                             W.remove(f)
 
         return W
+
+    def get_distance(self, a, b, a_id=None, b_id=None, b_matrix=False):
+        try:
+            a_id, b_id = int(a_id), int(b_id)
+        except Exception:
+            print(a_id, b_id)
+            assert False
+        assert isinstance(a_id, int), a_id
+        assert isinstance(b_id, int), b_id
+
+        distance = None
+        if self.distances_cache.get((a_id, b_id), False):
+            distance = self.distances_cache[(a_id, b_id)]
+
+        elif self.distances_cache.get((b_id, a_id ), False):
+            distance =  self.distances_cache[(b_id, a_id)]
+
+        if distance is None:
+
+            if self.angular:
+                distance = self.get_distance_angular(a, b)
+                self.distances_cache[(a, b)] = distance
+                return distance
+            else:
+                distance = self.get_distance_l2(a, b, b_matrix)
+                self.distances_cache[(a_id, b_id)] = distance
+                return distance
+
+        else:
+            return distance
 
     def get_distance_angular(self, a, b):
         return 1 - np.dot(a, b)

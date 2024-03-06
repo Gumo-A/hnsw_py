@@ -17,13 +17,13 @@ def test_distance():
 
     index = HNSW(angular=True)
 
-    dist = round(index.get_distance_l2(a, b), 6)
+    dist = round(index.get_distance(a, b), 6)
     assert dist == 1.0, f'{dist}, (a, b)'
 
-    dist = round(index.get_distance_l2(a, a), 6)
+    dist = round(index.get_distance(a, a), 6)
     assert dist == 0.0, f'{dist}, (a, a)'
 
-    dist = round(index.get_distance_l2(a, c), 6)
+    dist = round(index.get_distance(a, c), 6)
     assert dist == 2.0, f'{dist}, (a, c)'
 
     print('Cosine distance passed')
