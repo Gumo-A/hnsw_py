@@ -16,6 +16,7 @@ class HNSW:
         initial_layers=8,
     ):
         self.distance_count = 0
+        self.cache_count = 0
         self.distances_cache = {}
         
         self.M = M
@@ -93,7 +94,7 @@ class HNSW:
                 query=vector,
                 entry_point=ep,
                 ef=ef,
-                query_id=-1
+                query_id=None
             )
 
         neighbors = self.select_neighbors_simple(
@@ -303,7 +304,7 @@ class HNSW:
                 layer_number, 
                 W, 
                 inserted_vector, 
-                query_id=inserted_vector, 
+                query_id=inserted_node, 
                 return_distance=True
             )
             W.remove(e)
@@ -512,41 +513,46 @@ class HNSW:
 
         return W
 
-    def get_distance(self, a, b, a_id=None, b_id=None, b_matrix=False):
-        try:
-            a_id, b_id = int(a_id), int(b_id)
-        except Exception:
-            print(a_id, b_id)
-            assert False
-        assert isinstance(a_id, int), a_id
-        assert isinstance(b_id, int), b_id
+    def compute_distance(self, a, b, a_id=None, b_id=None, b_matrix=False):
+        
+        self.distance_count += 1
+        cache = True if (a_id and b_id) else False
 
-        distance = None
-        if self.distances_cache.get((a_id, b_id), False):
-            distance = self.distances_cache[(a_id, b_id)]
-
-        elif self.distances_cache.get((b_id, a_id ), False):
-            distance =  self.distances_cache[(b_id, a_id)]
-
-        if distance is None:
-
-            if self.angular:
-                distance = self.get_distance_angular(a, b)
-                self.distances_cache[(a, b)] = distance
-                return distance
-            else:
-                distance = self.get_distance_l2(a, b, b_matrix)
-                self.distances_cache[(a_id, b_id)] = distance
-                return distance
-
-        else:
+        if self.angular:
+            distance = self.get_distance_angular(a, b)
+            if cache: self.distances_cache[(a_id, b_id)] = distance
             return distance
+        else:
+            distance = self.get_distance_l2(a, b, b_matrix)
+            if cache: self.distances_cache[(a_id, b_id)] = distance
+            return distance
+
+    def get_distance(self, a, b, a_id=None, b_id=None, b_matrix=False):
+
+        if (a_id is None) or (b_id is None):
+            return self.compute_distance(
+                a, b, 
+                b_matrix=b_matrix
+            )
+
+        a_node = min([a_id, b_id])
+        b_node = max([a_id, b_id])
+
+        distance = self.distances_cache.get((a_node, b_node), False)
+        if distance:
+            self.cache_count += 1
+            return distance
+        else:
+            return self.compute_distance(
+                a, b,
+                a_node, b_node,
+                b_matrix=b_matrix
+            )
 
     def get_distance_angular(self, a, b):
         return 1 - np.dot(a, b)
 
     def get_distance_l2(self, a, b, b_matrix=False):
-        self.distance_count += 1
         if not b_matrix:
             return np.linalg.norm(a-b)
         else:

@@ -27,6 +27,7 @@ if __name__ == '__main__':
     index.build_index(embeddings)
 
     print(index.distance_count)
+    print(index.cache_count)
 
     print(index.get_average_degrees()) 
     for layer in index.layers:
@@ -45,6 +46,10 @@ if __name__ == '__main__':
         anns, elapsed_time = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
         measures = get_measures(bruteforce_data, anns)
         print(measures.mean())
+
+    
+    print(index.distance_count)
+    print(index.cache_count)
 
     # for layer in index.layers:
     #     nx.draw(layer)
