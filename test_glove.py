@@ -13,6 +13,8 @@ from helpers.glove_helpers import (
 
 np.random.seed(0)
 
+print(np.random.random())
+
 if __name__ == '__main__':
 
     dim, limit, angular = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3]))
