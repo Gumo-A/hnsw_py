@@ -35,6 +35,7 @@ class HNSW:
         self.current_vector_id = 0
         self.layers = [rx.PyGraph() for _ in range(initial_layers)]
         self.layers_map = [{} for _ in range(initial_layers)]
+        self.layers_map_inv = [{} for _ in range(initial_layers)]
         self.angular = angular
 
         return None
@@ -100,7 +101,7 @@ class HNSW:
 
             layer = self.layers[layer_number]
             layer_map = self.layers_map[layer_number]
-            layer_map_inv = {j: i for i, j in layer_map.items()}
+            layer_map_inv = self.layers_map_inv[layer_number]
 
             ep = self.search_layer(
                 layer=layer,
@@ -119,7 +120,7 @@ class HNSW:
 
         layer = self.layers[layer_number]
         layer_map = self.layers_map[0]
-        layer_map_inv = {j: i for i, j in layer_map.items()}
+        layer_map_inv = self.layers_map_inv[layer_number]
 
         neighbors = self.search_layer(
             layer=self.layers[0],
@@ -158,6 +159,7 @@ class HNSW:
             while l > L:
                 self.layers.append(rx.PyGraph())
                 self.layers_map.append({})
+                self.layers_map_inv.append({})
                 L += 1
             new_ep = True
 
@@ -167,7 +169,7 @@ class HNSW:
 
             layer = self.layers[layer_number]
             layer_map = self.layers_map[layer_number]
-            layer_map_inv = {j: i for i, j in layer_map.items()}
+            layer_map_inv = self.layers_map_inv[layer_number]
 
             if layer.num_nodes() == 0:
                 continue
@@ -193,14 +195,19 @@ class HNSW:
 
             layer = self.layers[layer_number]
             layer_map = self.layers_map[layer_number]
+            layer_map_inv = self.layers_map_inv[layer_number]
 
             if layer.num_nodes() == 0:
-                layer_map[node_id] = layer.add_node({'vector': vector})
+                in_layer_id = layer.add_node({'vector': vector})
+                layer_map[node_id] = in_layer_id
+                layer_map_inv[in_layer_id] = node_id
                 continue
 
-            layer_map[node_id] = layer.add_node({'vector': vector})
+            in_layer_id = layer.add_node({'vector': vector})
+            layer_map[node_id] = in_layer_id
+            layer_map_inv[in_layer_id] = node_id
 
-            layer_map_inv = {j: i for i, j in layer_map.items()}
+            layer_map_inv = self.layers_map_inv[layer_number]
 
             start_s2s = time.process_time()
             ep = self.search_layer(
