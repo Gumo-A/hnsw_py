@@ -16,43 +16,33 @@ np.random.seed(0)
 
 if __name__ == '__main__':
 
-    dim, limit = int(sys.argv[1]), int(sys.argv[2]) 
+    dim, limit, angular = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3]))
 
-    bruteforce_data = load_brute_force(dim=dim, limit=limit)
+    bruteforce_data = load_brute_force(dim=dim, limit=limit, name_append=f'_angular_{angular}')
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
 
     for M in [2**i for i in range(3, 6)]:
         index = HNSW(
             M=M, 
             # efConstruction=efConstruction,
-            # angular=False
+            angular=angular
         )
-        print('Parameters:')
-        index.print_parameters()
         index.build_index(embeddings)
 
-        # for layer in index.layers:
-        #     for node in layer.nodes():
-        #         if layer.degree(node) == 0:
-        #             print('Friendless node', node)
-
-
         sample_size = 100
-        for ef in [i for i in range(2, 35, 4)]:
+        for ef in [i for i in range(12, 35, 4)]:
             sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
             print(f'Finding ANNs with ef={ef}')
-            anns, elapsed_time = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
+            anns = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
             measures = get_measures(bruteforce_data, anns)
-            print(measures.mean())
+            print('Recall@10:', round(measures.mean(), 5))
 
-    
+        print('Parameters:')
+        index.print_parameters()
+        time_measures = {}
         for key, val in index.time_measurements.items():
-            print(key)
-            print(np.array(val).mean())
+            time_measures[key] = round(np.array(val).mean(), 6)
 
-    # for layer in index.layers:
-    #     nx.draw(layer)
-    #     plt.show()
+        print('Time measurements:')
+        print(time_measures)
 
-    with open('./indices/test_index.hnsw', 'wb') as file:
-        pickle.dump(index, file)

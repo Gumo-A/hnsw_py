@@ -47,6 +47,7 @@ class HNSW:
     def build_index(self, sample: np.array):
 
         if self.angular:
+        # if True:
             sample = self.normalize_vectors(sample)
 
         print(f'Adding {sample.shape[0]} vectors to HNSW')
@@ -88,6 +89,7 @@ class HNSW:
     def ann_by_vector(self, vector, n, ef):
 
         if self.angular:
+        # if True:
             vector = self.normalize_vectors(vector, single_vector=True)
 
         ep = self.ep
@@ -98,25 +100,37 @@ class HNSW:
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
-                ef=ef,
+                ef=1,
                 query_id=None
             )
 
-        neighbors = self.select_neighbors_simple(
-            layer_number=0,
-            inserted_node=vector,
-            candidates=ep,
-            n=n+1
-        )
-
-        # neighbors = self.search_layer(
-        #     layer_number=layer_number,
-        #     query=vector,
-        #     entry_point=ep,
-        #     ef=ef
+        # neighbors = self.select_neighbors_simple(
+        #     layer_number=0,
+        #     inserted_node=vector,
+        #     candidates=ep,
+        #     n=n+1
         # )
 
-        return list(neighbors)[1:]
+        neighbors = self.search_layer(
+            layer_number=0,
+            query=vector,
+            entry_point=ep,
+            ef=ef
+        )
+
+        neighbors = self.get_nearest(
+            layer_number=0,
+            candidates=neighbors,
+            query=vector,
+            # this '+1' should be removed when
+            # comparing to new vectors.
+            # I put it here to not include the query node
+            # in the results and keep the measures clean
+            top=n+1
+        )
+
+        # same for the slice, I k=only need to return the whole list
+        return neighbors[1:]
 
     def insert(self, vector, node_reinsert=None):
 
@@ -215,18 +229,13 @@ class HNSW:
             )
 
             start_s2p = time.process_time()
-            for neighbor, dist in neighbors_to_connect:
+            for neighbor in neighbors_to_connect:
                 if (
                     ((layer_number > 0) and (layer.degree[neighbor] > self.Mmax)) or
                     ((layer_number == 0) and (layer.degree[neighbor] > self.Mmax0))
                 ):
 
                     limit = self.Mmax if layer_number > 0 else self.Mmax0
-
-                    # old_edges = list(layer.edges(neighbor, data=True))
-                    # old_edges = sorted(old_edges, key=lambda x: x[2]['distance'])
-                    # to_remove = old_edges[limit:]
-                    # to_remove = list(map(lambda x: (x[0], x[1]), to_remove))
 
                     old_neighbors = list(layer.neighbors(neighbor))
                     new_neighbors = self.select_neighbors_heuristic(
@@ -361,19 +370,21 @@ class HNSW:
             W.remove(e)
 
             if (len(R) == 0):
-                R.add((e, dist_e))
+                # R.add((e, dist_e))
+                R.add(e)
                 continue
 
             e_vector = layer._node[e]['vector']
             nearest_from_r, dist_from_r = self.get_nearest(
                 layer_number, 
-                [elem[0] for elem in R], 
+                list(R), 
+                # [elem[0] for elem in R], 
                 e_vector, 
                 query_id=e,
                 return_distance=True
             )
             if dist_e < dist_from_r:
-                R.add((e, dist_e))
+                R.add(e)
             else:
                 W_d.add(e)
 
@@ -387,7 +398,7 @@ class HNSW:
                     return_distance=True
                 )
                 W_d.remove(e)
-                R.add((e, dist_e))
+                R.add(e)
 
         return R
         
@@ -398,7 +409,7 @@ class HNSW:
         node_id: int, 
         sorted_candidates: set[int]
     ):
-        edges = [(node_id, cand) for cand, dist in sorted_candidates]
+        edges = [(node_id, cand) for cand in sorted_candidates]
         layer.add_edges_from(edges)
         
         # for candidate, distance in sorted_candidates:
@@ -414,9 +425,11 @@ class HNSW:
         layer_number: int, 
         candidates: set[int], 
         query: np.array,
-        query_id: int,
-        return_distance=False
-    ):
+        query_id: int = None,
+        return_distance=False,
+        top=1
+    ) -> list:
+
         """
             Gets the nearest element from the candidate list 
             to the query
@@ -429,25 +442,25 @@ class HNSW:
         # vectors = [layer._node[candidate]['vector'] for candidate in candidates]
         # distances = [self.get_distance(query, vector) for vector in vectors]
 
-        distances = []
+        cands_dist = []
         for candidate in candidates:
-            vector = layer._node[candidate]['vector'] 
-            distances.append(
-                self.get_distance(
-                    a=vector, 
-                    b=query,
-                    a_id=candidate,
-                    b_id=query_id
-                )
+            distance = self.get_distance(
+                a=layer._node[candidate]['vector'], 
+                b=query,
+                a_id=candidate,
+                b_id=query_id
             )
+            cands_dist.append((candidate, distance))
 
-        cands_dist = list(zip(candidates, distances))
-        cands_dist = min(cands_dist, key=lambda x: x[1])
+        # cands_dist = list(zip(candidates, distances))
 
-        if return_distance:
-            return cands_dist[0], cands_dist[1]
+        if top == 1:
+            cands_dist = min(cands_dist, key=lambda x: x[1])
+            return cands_dist if return_distance else cands_dist[0]
         else:
-            return cands_dist[0]
+            cands_dist = sorted(cands_dist, key=lambda x: x[1])[:top]
+            return cands_dist if return_distance else list(map(lambda x: x[0], cands_dist)) 
+
 
     def get_furthest(
         self, 
@@ -491,7 +504,8 @@ class HNSW:
         ef: int,
         query_id: int = None,
         step=1
-    ):
+    ) -> set:
+
         v = set([entry_point]) if not isinstance(entry_point, set) \
                                 else entry_point.copy()
         C = set([entry_point]) if not isinstance(entry_point, set) \
@@ -577,11 +591,11 @@ class HNSW:
         cache = True if (a_id and b_id) else False
 
         if self.angular:
-            distance = self.get_distance_angular(a, b)
+            distance = self.compute_distance_angular(a, b)
             if cache: self.distances_cache[(a_id, b_id)] = distance
             return distance
         else:
-            distance = self.get_distance_l2(a, b, b_matrix)
+            distance = self.compute_distance_l2(a, b, b_matrix)
             if cache: self.distances_cache[(a_id, b_id)] = distance
             return distance
 
@@ -607,10 +621,10 @@ class HNSW:
                 b_matrix=b_matrix
             )
 
-    def get_distance_angular(self, a, b):
-        return 1 - np.dot(a, b)
+    def compute_distance_angular(self, a, b):
+        return 1 - np.dot(a, b.T)
 
-    def get_distance_l2(self, a, b, b_matrix=False):
+    def compute_distance_l2(self, a, b, b_matrix=False):
         if not b_matrix:
             return np.linalg.norm(a-b)
         else:

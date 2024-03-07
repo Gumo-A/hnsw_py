@@ -8,25 +8,20 @@ import numpy as np
 import pickle
 
 
-def ann(index, sample, sample_indices, ef=10):
+def ann(index, sample, sample_indices, n=10, ef=10):
 
-    start = time.time()
     nearest_to_queries_ann = {}
     for idx, query in tqdm(enumerate(sample), desc='Finding ANNs', total=sample.shape[0]):
         idx = sample_indices[idx]
-        anns = index.ann_by_vector(vector=query, n=10, ef=ef)
-        nearest_to_queries_ann[idx] = anns[:10]
-    end = time.time()
-    ann_time = round(end - start, 2)
+        anns = index.ann_by_vector(vector=query, n=n, ef=ef)
+        nearest_to_queries_ann[idx] = anns[:n]
 
-    return (
-        nearest_to_queries_ann,
-        ann_time
-    )
+    return nearest_to_queries_ann
 
 
-def load_brute_force(dim, limit):
-    path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}_parallel'
+def load_brute_force(dim, limit, name_append=''):
+
+    path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}{name_append}'
     with open(path, 'rb') as file:
         data = pickle.load(file)
     return data
@@ -91,7 +86,7 @@ def parallel_nn(embeddings, limit, dim, processes=None, angular=False):
     num_processes = processes if processes else multiprocessing.cpu_count()
 
     splits, nb_per_split = split(embeddings, num_processes)
-    splits = [(10, embeddings, split, limit, dim, nb_per_split, i) for i, split in enumerate(splits)]
+    splits = [(10, embeddings, split, limit, dim, nb_per_split, i, angular) for i, split in enumerate(splits)]
 
     with Pool(processes=num_processes) as pool:
         results = pool.starmap(brute_force_parallel, splits)
@@ -102,6 +97,24 @@ def parallel_nn(embeddings, limit, dim, processes=None, angular=False):
             nearest_neighbors[idx] = neighbors
 
     return nearest_neighbors
+
+
+def parallel_places(embeddings, processes=None, angular=False):
+    num_processes = processes if processes else multiprocessing.cpu_count()
+
+    splits, nb_per_split = split(embeddings, num_processes)
+    splits = [(10, embeddings, split, nb_per_split, i) for i, split in enumerate(splits)]
+
+    with Pool(processes=num_processes) as pool:
+        results = pool.starmap(brute_force_places, splits)
+
+    nearest_neighbors = {}
+    for result in results:
+        for idx, neighbors in result.items():
+            nearest_neighbors[idx] = neighbors
+
+    return nearest_neighbors
+
 
 def brute_force_parallel(
     n: int,
@@ -153,6 +166,48 @@ def brute_force_parallel(
 
     return nearest_neighbors
     
+def brute_force_places(
+    n: int,
+    all_emb: np.array,
+    emb: np.array,
+    per_split: int = None,
+    split_nb: int = None,
+    angular: bool = False
+):
+    
+    to_add = split_nb*per_split
+    nearest_neighbors = {}
+    if split_nb == 0:
+        for idx in tqdm(
+            range(emb.shape[0]), 
+            total=emb.shape[0],
+        ):
+
+            dists_vector = get_distance(emb[idx], all_emb, b_matrix=True, angular=angular)
+            dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
+
+            dists_vector = sorted(
+                dists_vector,
+                key=lambda x: x[1]
+            )[1:n+1]
+
+            idx += to_add
+            nearest_neighbors[idx] = dists_vector
+    else:
+        for idx in range(emb.shape[0]): 
+
+                dists_vector = get_distance(emb[idx], all_emb, b_matrix=True)
+                dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
+
+                dists_vector = sorted(
+                    dists_vector,
+                    key=lambda x: x[1]
+                )[1:n+1]
+
+                idx += to_add
+                nearest_neighbors[idx] = dists_vector
+
+    return nearest_neighbors
 
 def write_brute_force_nn(nearest_neighbors: dict[list], limit, dim, name_append=''):
     path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}{name_append}'
@@ -160,23 +215,31 @@ def write_brute_force_nn(nearest_neighbors: dict[list], limit, dim, name_append=
         pickle.dump(nearest_neighbors, file)
 
 
+def write_bf_places(nearest_neighbors: dict[list], name_append=''):
+    path = f'/home/gamal/places_embeddings/bf_places{name_append}'
+    with open(path, 'wb') as file:
+        pickle.dump(nearest_neighbors, file)
+
+
+def normalize_vectors(vectors, single_vector=False):
+    if single_vector:
+        return vectors/np.linalg.norm(vectors)
+    else:
+        norm = np.linalg.norm(vectors, axis=1)
+        norm = np.expand_dims(norm, axis=1)
+        return vectors/norm
+
+
 def get_distance(a, b, b_matrix=False, angular=False):
-        if angular:
-            if not b_matrix:
-                return 1 - np.dot(a, b)
-                # cos_sim = np.dot(a, b)
-                # angular_distance = np.arccos(cos_sim)/math.pi
-                # return angular_distance
-            else:
-                return 1 - np.dot(a, b)
-                # cos_sim = np.dot(a, b.T)
-                # angular_distance = np.arccos(cos_sim)/math.pi
-                # return angular_distance
+    if angular:
+        a = normalize_vectors(a, single_vector=True)
+        b = normalize_vectors(b, single_vector=True)
+        return 1 - np.dot(a, b.T)
+    else:
+        if not b_matrix:
+            return np.linalg.norm(a-b)
         else:
-            if not b_matrix:
-                return np.linalg.norm(a-b)
-            else:
-                return np.linalg.norm(a-b, axis=1)
+            return np.linalg.norm(a-b, axis=1)
 
     
 def get_measures(nearest_to_queries, nearest_to_queries_ann):
@@ -184,9 +247,9 @@ def get_measures(nearest_to_queries, nearest_to_queries_ann):
     measures = defaultdict(list)
     for node, neighbors_distances in nearest_to_queries_ann.items():
         true_nns = list(map(lambda x: x[0], nearest_to_queries[node]))
-        # for ann in neighbors_distances:
+        for ann in neighbors_distances:
         # print(len(true_nns), len(neighbors_distances))
-        for ann, dist in neighbors_distances:
+        # for ann, dist in neighbors_distances:
             measures['recall@10'].append(ann in true_nns[:len(neighbors_distances)])
 
     return np.array(measures['recall@10'])

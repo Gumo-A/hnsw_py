@@ -13,7 +13,7 @@ from helpers.glove_helpers import (
 
 if __name__ == '__main__':
     processes = int(sys.argv[3]) if len(sys.argv) > 4 else None
-    dim, limit = int(sys.argv[1]), int(sys.argv[2])
+    dim, limit, angular = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3]))
 
     embeddings = load_glove(dim=dim, limit=limit)
 
@@ -22,7 +22,7 @@ if __name__ == '__main__':
         limit=limit, 
         dim=dim, 
         processes=processes,
-        angular=False
+        angular=angular
     )
 
-    write_brute_force_nn(nearest_neighbors, limit, dim, name_append='_parallel')
+    write_brute_force_nn(nearest_neighbors, limit, dim, name_append=f'_angular_{angular}')
