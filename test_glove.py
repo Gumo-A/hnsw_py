@@ -1,7 +1,6 @@
 import sys
 import pickle
 import numpy as np
-import networkx as nx
 from personal_hnsw import HNSW
 import matplotlib.pyplot as plt
 from helpers.glove_helpers import (
