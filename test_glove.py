@@ -13,7 +13,6 @@ from helpers.glove_helpers import (
 
 np.random.seed(0)
 
-print(np.random.random())
 
 if __name__ == '__main__':
 
@@ -32,7 +31,8 @@ if __name__ == '__main__':
 
         sample_size = 100
         for ef in [i for i in range(12, 35, 4)]:
-            sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
+            # sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
+            sample_indices = range(0, embeddings.shape[0])
             print(f'Finding ANNs with ef={ef}')
             anns = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
             measures = get_measures(bruteforce_data, anns)
