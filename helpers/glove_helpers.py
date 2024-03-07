@@ -184,9 +184,10 @@ def get_measures(nearest_to_queries, nearest_to_queries_ann):
     measures = defaultdict(list)
     for node, neighbors_distances in nearest_to_queries_ann.items():
         true_nns = list(map(lambda x: x[0], nearest_to_queries[node]))
-        # for ann in value:
+        # for ann in neighbors_distances:
+        # print(len(true_nns), len(neighbors_distances))
         for ann, dist in neighbors_distances:
-            measures['recall@10'].append(ann in true_nns)
+            measures['recall@10'].append(ann in true_nns[:len(neighbors_distances)])
 
     return np.array(measures['recall@10'])
 

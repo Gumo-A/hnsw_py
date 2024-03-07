@@ -22,7 +22,7 @@ if __name__ == '__main__':
         limit=limit, 
         dim=dim, 
         processes=processes,
-        angular=True
+        angular=False
     )
 
     write_brute_force_nn(nearest_neighbors, limit, dim, name_append='_parallel')

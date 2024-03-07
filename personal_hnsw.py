@@ -2,6 +2,8 @@ from tqdm import tqdm
 import networkx as nx
 import numpy as np
 import math
+import time
+from collections import defaultdict
 
 
 class HNSW:
@@ -15,6 +17,9 @@ class HNSW:
         angular=False,
         initial_layers=1
     ):
+
+        self.time_measurements = defaultdict(list)
+        
         self.distance_count = 0
         self.cache_count = 0
         self.distances_cache = {}
@@ -23,7 +28,7 @@ class HNSW:
         
         self.M = M
         self.Mmax0 = M*2 if Mmax0 is None else Mmax0
-        self.Mmax = self.M if Mmax is None else Mmax
+        self.Mmax = round(self.M*1.5) if Mmax is None else Mmax
         self.mL = 1/np.log(M) if mL is None else mL
         self.efConstruction = self.Mmax0 if efConstruction is None else efConstruction
 
@@ -32,6 +37,12 @@ class HNSW:
         self.angular = angular
 
         return None
+
+    def print_parameters(self):
+        for param, val in self.__dict__.items():
+            if param in ['M', 'Mmax', 'Mmax0', 'mL', 'efConstruction', 'angular']:
+                print(param, val)
+        print('Nb. layers', len(self.layers))
     
     def build_index(self, sample: np.array):
 
@@ -109,6 +120,9 @@ class HNSW:
 
     def insert(self, vector, node_reinsert=None):
 
+        start_i = time.process_time()
+        
+        # start_p = time.process_time()
         node_id = self.current_vector_id if node_reinsert is None else node_reinsert
         
         L = len(self.layers) - 1
@@ -122,28 +136,38 @@ class HNSW:
             new_ep = True
 
         ep = self.ep
+        # end_p = time.process_time()
+        # self.time_measurements['prelimilar'].append(end_p-start_p)
 
+
+        # start_s1 = time.process_time()
         # step 1
         for layer_number in range(L, l, -1):
 
             if self.layers[layer_number].order() == 0:
                 continue
             
+            # start_s1s = time.process_time()
             W = self.search_layer(
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
                 ef=1,
-                query_id=self.current_vector_id
+                query_id=self.current_vector_id,
             )
+            # end_s1s = time.process_time()
+            # self.time_measurements['step 1 search'].append(end_s1s-start_s1s)
             ep = self.get_nearest(
                 layer_number, 
                 W, 
                 vector, 
                 query_id=self.current_vector_id
             )
+        # end_s1 = time.process_time()
+        # self.time_measurements['step 1'].append(end_s1-start_s1)
 
 
+        start_s2 = time.process_time()
         # step 2
         for layer_number in range(l, -1, -1):
 
@@ -161,14 +185,19 @@ class HNSW:
                 vector=vector
             )
 
+            start_s2s = time.process_time()
             ep = self.search_layer(
                 layer_number=layer_number,
                 query=vector,
                 entry_point=ep,
                 ef=self.efConstruction,
-                query_id=self.current_vector_id
+                query_id=self.current_vector_id,
+                step=2
             )
+            end_s2s = time.process_time()
+            self.time_measurements['step 2 search'].append(end_s2s-start_s2s)
 
+            start_s2h = time.process_time()
             neighbors_to_connect = self.select_neighbors_heuristic(
                 layer_number=layer_number,
                 inserted_node=node_id,
@@ -176,6 +205,8 @@ class HNSW:
                 # extend_cands=True,
                 keep_pruned=True
             )
+            end_s2h = time.process_time()
+            self.time_measurements['step 2 heuristic'].append(end_s2h-start_s2h)
 
             self.add_edges(
                 layer=layer,
@@ -183,6 +214,7 @@ class HNSW:
                 sorted_candidates=neighbors_to_connect
             )
 
+            start_s2p = time.process_time()
             for neighbor, dist in neighbors_to_connect:
                 if (
                     ((layer_number > 0) and (layer.degree[neighbor] > self.Mmax)) or
@@ -191,17 +223,37 @@ class HNSW:
 
                     limit = self.Mmax if layer_number > 0 else self.Mmax0
 
-                    old_edges = list(layer.edges(neighbor, data=True))
-                    old_edges = sorted(old_edges, key=lambda x: x[2]['distance'])
-                    to_remove = old_edges[limit:]
-                    to_remove = list(map(lambda x: (x[0], x[1]), to_remove))
+                    # old_edges = list(layer.edges(neighbor, data=True))
+                    # old_edges = sorted(old_edges, key=lambda x: x[2]['distance'])
+                    # to_remove = old_edges[limit:]
+                    # to_remove = list(map(lambda x: (x[0], x[1]), to_remove))
 
-                    layer.remove_edges_from(to_remove)
+                    old_neighbors = list(layer.neighbors(neighbor))
+                    new_neighbors = self.select_neighbors_heuristic(
+                        layer_number,
+                        neighbor,
+                        old_neighbors
+                    )
+                    layer.remove_edges_from([(neighbor, old) for old in old_neighbors])
+                    self.add_edges(
+                        layer,
+                        neighbor,
+                        list(new_neighbors)[:limit]
+                    )
+
+            end_s2p = time.process_time()
+            self.time_measurements['step 2 prune'].append(end_s2p-start_s2p)
+
+        end_s2 = time.process_time()
+        self.time_measurements['step 2'].append(end_s2-start_s2)
 
 
         self.define_entrypoint()
         if node_reinsert is None:
             self.current_vector_id += 1
+
+        end_i  = time.process_time()
+        self.time_measurements['insert'].append(end_i-start_i)
 
     def get_friendless_nodes(self):
         friendless = []
@@ -346,7 +398,7 @@ class HNSW:
         node_id: int, 
         sorted_candidates: set[int]
     ):
-        edges = [(node_id, cand, {'distance': dist}) for cand, dist in sorted_candidates]
+        edges = [(node_id, cand) for cand, dist in sorted_candidates]
         layer.add_edges_from(edges)
         
         # for candidate, distance in sorted_candidates:
@@ -437,7 +489,8 @@ class HNSW:
         query: np.array, 
         entry_point: set[int], 
         ef: int,
-        query_id: int
+        query_id: int = None,
+        step=1
     ):
         v = set([entry_point]) if not isinstance(entry_point, set) \
                                 else entry_point.copy()
@@ -449,6 +502,7 @@ class HNSW:
         layer = self.layers[layer_number]
 
         while len(C) > 0:
+            start_w = time.process_time()
             c = self.get_nearest(
                 layer_number, 
                 C, 
@@ -475,10 +529,13 @@ class HNSW:
                 a_id=f,
                 b_id=query_id
             ) 
+            end_w = time.process_time()
+            if step == 2: self.time_measurements['search s2w'].append(end_w-start_w)
 
             if cand_query_dist > furthest_query_dist:
                 break # all element in W are evaluated 
 
+            start_f = time.process_time()
             for neighbor in layer.neighbors(c):
                 if neighbor not in v:
                     v.add(neighbor)
@@ -509,6 +566,8 @@ class HNSW:
                         W.add(neighbor)
                         if len(W) > ef:
                             W.remove(f)
+            end_f = time.process_time()
+            if step == 2: self.time_measurements['search s2f'].append(end_f-start_f)
 
         return W
 
