@@ -95,8 +95,13 @@ class HNSW:
     
     def build_index(self, sample: np.array):
 
+        # TODO:
+        # setup methods to estimate recall at the current state of
+        # the index construction. Set it up so that if a certain
+        # threshold is not met, the index is rebuilt from scratch
+        # with higher values for M and/or efConstruction.
+
         if self.angular:
-        # if True:
             sample = self.normalize_vectors(sample)
 
         print(f'Adding {sample.shape[0]} vectors to HNSW')
@@ -138,7 +143,6 @@ class HNSW:
     def ann_by_vector(self, vector, n, ef):
 
         if self.angular:
-        # if True:
             vector = self.normalize_vectors(vector, single_vector=True)
 
         ep = self.ep
@@ -516,7 +520,8 @@ class HNSW:
         layer_number: int, 
         candidates: set, 
         query: np.array,
-        query_id: int
+        query_id: int,
+        return_distance=False
     ):
         """
             Gets the furthest element from the candidate list to the query
@@ -542,7 +547,7 @@ class HNSW:
         furthest = list(zip(candidates, distances))
         furthest = max(furthest, key=lambda x: x[1])
 
-        return furthest[0]
+        return furthest if return_distance else furthest[0]
 
 
     def search_layer(
@@ -566,32 +571,34 @@ class HNSW:
 
         while len(C) > 0:
             start_w = time.process_time()
-            c = self.get_nearest(
+            c, cand_query_dist = self.get_nearest(
                 layer_number, 
                 C, 
                 query, 
-                query_id=query_id
+                query_id=query_id,
+                return_distance=True
             )
             C.remove(c)
-            f = self.get_furthest(
+            f, furthest_query_dist = self.get_furthest(
                 layer_number, 
                 W, 
                 query,
-                query_id=query_id
+                query_id=query_id,
+                return_distance=True
             )
 
-            cand_query_dist = self.get_distance(
-                a=layer._node[c]['vector'],
-                b=query,
-                a_id=c,
-                b_id=query_id
-            )
-            furthest_query_dist = self.get_distance(
-                a=layer._node[f]['vector'],
-                b=query,
-                a_id=f,
-                b_id=query_id
-            ) 
+            # cand_query_dist = self.get_distance(
+            #     a=layer._node[c]['vector'],
+            #     b=query,
+            #     a_id=c,
+            #     b_id=query_id
+            # )
+            # furthest_query_dist = self.get_distance(
+            #     a=layer._node[f]['vector'],
+            #     b=query,
+            #     a_id=f,
+            #     b_id=query_id
+            # ) 
             end_w = time.process_time()
             if step == 2: self.time_measurements['search s2w'].append(end_w-start_w)
 
