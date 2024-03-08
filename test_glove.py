@@ -30,7 +30,7 @@ if __name__ == '__main__':
             # efConstruction=i,
             # angular=angular
         )
-        index.add_vectors(embeddings)
+        index.add_vectors(embeddings, range(embeddings.shape[0]))
 
         # s2s_times.append([index.efConstruction, np.array(index.time_measurements['step 2 search']).mean()])
 

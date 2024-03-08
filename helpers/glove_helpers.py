@@ -89,7 +89,7 @@ def parallel_nn(embeddings, limit, dim, processes=None, angular=False):
     splits = [(10, embeddings, split, limit, dim, nb_per_split, i, angular) for i, split in enumerate(splits)]
 
     with Pool(processes=num_processes) as pool:
-        results = pool.starmap(brute_force_parallel, splits)
+        results = pool.starmap(brute_force_parallel_even, splits)
 
     nearest_neighbors = {}
     for result in results:
@@ -163,6 +163,65 @@ def brute_force_parallel(
 
                 idx += to_add
                 nearest_neighbors[idx] = dists_vector
+
+    return nearest_neighbors
+
+def brute_force_parallel_even(
+    n: int,
+    all_emb: np.array,
+    emb: np.array,
+    limit=None,
+    dim=50,
+    per_split: int = None,
+    split_nb: int = None,
+    angular: bool = False
+):
+    if limit:
+        total = limit
+    else:
+        total = 400_000
+
+    to_add = split_nb*per_split
+    nearest_neighbors = {}
+    if split_nb == 0:
+        for idx in tqdm(
+            range(emb.shape[0]), 
+            total=emb.shape[0],
+        ):
+
+            dists_vector = get_distance(emb[idx], all_emb, b_matrix=True, angular=angular)
+            dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
+            dists_vector_even = []
+            for jdx, dist in dists_vector:
+                if jdx % 2 != 0:
+                    continue
+                dists_vector_even.append((jdx, dist))
+
+            dists_vector_even = sorted(
+                dists_vector_even,
+                key=lambda x: x[1]
+            )[1:n+1]
+
+            idx += to_add
+            nearest_neighbors[idx] = dists_vector_even
+    else:
+        for idx in range(emb.shape[0]): 
+
+                dists_vector = get_distance(emb[idx], all_emb, b_matrix=True)
+                dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
+                dists_vector_even = []
+                for jdx, dist in dists_vector:
+                    if jdx % 2 != 0:
+                        continue
+                    dists_vector_even.append((jdx, dist))
+
+                dists_vector_even = sorted(
+                    dists_vector_even,
+                    key=lambda x: x[1]
+                )[1:n+1]
+
+                idx += to_add
+                nearest_neighbors[idx] = dists_vector_even
 
     return nearest_neighbors
     

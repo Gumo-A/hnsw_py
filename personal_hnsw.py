@@ -7,12 +7,6 @@ import math
 import time
 import os
 
-class ThinGraph(nx.Graph):
-    all_edge_dict = {}
-    def single_edge_dict(self):
-        return self.all_edge_dict
-    edge_attr_dict_factory = single_edge_dict
-
 
 class HNSW:
     def __init__(
@@ -31,7 +25,6 @@ class HNSW:
         self.distances_cache = {}
 
         self.ep = set([None])
-
         self.node_ids = set()
         
         self.M = M
@@ -40,8 +33,7 @@ class HNSW:
         self.mL = 1/np.log(M) if mL is None else mL
         self.efConstruction = self.Mmax0 if efConstruction is None else efConstruction
         
-        self.current_vector_id = 0
-        self.layers = [ThinGraph() for _ in range(initial_layers)]
+        self.layers = [nx.Graph() for _ in range(initial_layers)]
         self.angular = angular
 
         return None
@@ -206,7 +198,8 @@ class HNSW:
         # same for the slice, I k=only need to return the whole list
         return neighbors[1:]
 
-    def insert(self, vector, node_id):
+    # TODO: add payload to filter
+    def insert(self, vector, node_id, payload: dict):
 
         if node_id in self.node_ids:
             return None
@@ -223,7 +216,7 @@ class HNSW:
         new_ep = False
         if (l > L) or (self.ep is None):
             while l > L:
-                self.layers.append(ThinGraph())
+                self.layers.append(nx.Graph())
                 L += 1
             new_ep = True
 
@@ -247,7 +240,7 @@ class HNSW:
                 query=vector,
                 entry_point=ep,
                 ef=1,
-                query_id=self.current_vector_id,
+                query_id=node_id,
             )
             # end_s1s = time.process_time()
             # self.time_measurements['step 1 search'].append(end_s1s-start_s1s)
@@ -255,7 +248,7 @@ class HNSW:
                 layer, 
                 W, 
                 vector, 
-                query_id=self.current_vector_id
+                query_id=node_id
             )])
         # end_s1 = time.process_time()
         # self.time_measurements['step 1'].append(end_s1-start_s1)
@@ -270,13 +263,15 @@ class HNSW:
             if layer.order() == 0:
                 layer.add_node(
                     node_id, 
-                    vector=vector
+                    vector=vector,
+                    **payload
                 )
                 continue
 
             layer.add_node(
                 node_id, 
-                vector=vector
+                vector=vector,
+                **payload
             )
 
             start_s2s = time.process_time()
@@ -285,7 +280,7 @@ class HNSW:
                 query=vector,
                 entry_point=ep,
                 ef=self.efConstruction,
-                query_id=self.current_vector_id,
+                query_id=node_id,
                 step=2
             )
             end_s2s = time.process_time()

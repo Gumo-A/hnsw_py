@@ -19,17 +19,11 @@ if __name__ == '__main__':
 
     bruteforce_data = load_brute_force(dim=dim, limit=limit, name_append=f'_angular_{angular}')
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
-    half = round(embeddings.shape[0]/2)
-    embeddings = embeddings.astype(np.float16)[half*0:half*1]
+    embeddings = embeddings.astype(np.float16)
 
 
-    index = HNSW(
-        M=24, 
-    )
-    print('Parameters:')
-    index.print_parameters()
-
-    index.add_vectors(embeddings)
+    index = HNSW( M=24,  )
+    index.add_vectors(embeddings, range(embeddings.shape[0]), checkpoint=True)
 
     sample_size = 100
     sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
@@ -41,5 +35,5 @@ if __name__ == '__main__':
     measures = get_measures(bruteforce_data, anns)
     print(measures.mean())
 
-    index.save('./indices/test_index_to_add.hnsw')
+    index.save(f'./indices/lim{limit}_dim{dim}.hnsw')
 
