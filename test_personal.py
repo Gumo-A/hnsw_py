@@ -32,7 +32,7 @@ if __name__ == '__main__':
     index = HNSW(
         M=20,
     )
-    index.build_index(places[:limit])
+    index.add_vectors(places[:limit])
 
     nearest_to_queries_ann = ann(index, places[:limit], range(limit), ef=12)
     measures = get_measures(bf_nn, nearest_to_queries_ann)

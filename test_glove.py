@@ -21,16 +21,21 @@ if __name__ == '__main__':
     bruteforce_data = load_brute_force(dim=dim, limit=limit, name_append=f'_angular_{angular}')
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
 
-    for M in [2**i for i in range(3, 6)]:
+    embeddings = embeddings.astype(np.float16)
+
+    # s2s_times = []
+    for i in [i for i in range(2, 37)]:
         index = HNSW(
-            M=M, 
-            # efConstruction=efConstruction,
-            angular=angular
+            M=i, 
+            # efConstruction=i,
+            # angular=angular
         )
-        index.build_index(embeddings)
+        index.add_vectors(embeddings)
+
+        # s2s_times.append([index.efConstruction, np.array(index.time_measurements['step 2 search']).mean()])
 
         sample_size = 100
-        for ef in [i for i in range(12, 35, 4)]:
+        for ef in [i for i in range(12, 37, 12)]:
             sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
             print(f'Finding ANNs with ef={ef}')
             anns = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
@@ -44,5 +49,9 @@ if __name__ == '__main__':
             time_measures[key] = round(np.array(val).mean(), 6)
 
         print('Time measurements:')
-        print(time_measures)
+        print('Step two\'s search is', round(time_measures['step 2 search']/time_measures['insert'], 4), 'of insertion time')
 
+# s2s_times = np.array(s2s_times)
+# plt.plot(s2s_times[:, 0], s2s_times[:, 1])
+# plt.title('Step 2 search time as a function of efConstruction')
+# plt.show()
