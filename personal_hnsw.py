@@ -1,9 +1,10 @@
+from collections import defaultdict
 from tqdm import tqdm
 import networkx as nx
 import numpy as np
+import pickle
 import math
 import time
-from collections import defaultdict
 
 
 class HNSW:
@@ -31,12 +32,60 @@ class HNSW:
         self.Mmax = round(self.M*1.5) if Mmax is None else Mmax
         self.mL = 1/np.log(M) if mL is None else mL
         self.efConstruction = self.Mmax0 if efConstruction is None else efConstruction
-
+        
         self.current_vector_id = 0
         self.layers = [nx.Graph() for _ in range(initial_layers)]
         self.angular = angular
 
         return None
+
+    def save(self, path):
+        index_data = {}
+        
+        index_data['current_id'] = self.current_vector_id
+        index_data['distances_cache'] = self.distances_cache
+
+        params = {}
+        for param_name in ['ep', 'M', 'Mmax', 'Mmax0', 'mL', 'efConstruction', 'angular']:
+            params[param_name] = self.__dict__[param_name]
+        index_data['params'] = params
+
+        layers = []
+        for layer in self.layers:
+            layers.append(layer.edges())
+        index_data['layers'] = layers
+
+        nodes = []
+        for layer in self.layers:
+            nodes.append(layer.nodes(data=True))
+        index_data['nodes'] = nodes
+
+        with open(path, 'wb') as file:
+            pickle.dump(index_data, file)
+
+        
+
+    def load(self, path):
+        with open(path, 'rb') as file:
+            index_data = pickle.load(file)
+
+        self.layers = []
+        for layer_number in range(len(index_data['layers'])):
+
+            layer_edges = index_data['layers'][layer_number]
+            layer_nodes = index_data['nodes'][layer_number]
+
+            graph = nx.from_edgelist(layer_edges)
+            graph.add_nodes_from(layer_nodes)
+
+            self.layers.append(graph)
+
+        self.current_vector_id = index_data['current_id']
+        self.distances_cache = index_data['distances_cache']
+
+        for param_name, param in index_data['params'].items():
+            self.__dict__[param_name] = param
+        
 
     def print_parameters(self):
         for param, val in self.__dict__.items():

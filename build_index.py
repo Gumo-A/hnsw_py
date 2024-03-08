@@ -15,7 +15,7 @@ from helpers.glove_helpers import (
 
 if __name__ == '__main__':
 
-    dim, limit, angular = int(sys.argv[1]), int(sys.argv[2]), bool(sys.argv[3])
+    dim, limit, angular = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3]))
 
     bruteforce_data = load_brute_force(dim=dim, limit=limit, name_append=f'_angular_{angular}')
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
@@ -34,10 +34,9 @@ if __name__ == '__main__':
     ef = 20
 
     print(f'Finding ANNs with ef={ef}')
-    anns, elapsed_time = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
+    anns= ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
     measures = get_measures(bruteforce_data, anns)
     print(measures.mean())
 
-    with open('./indices/test_index.hnsw', 'wb') as file:
-        pickle.dump(index, file)
+    index.save('./indices/test_index.hnsw')
 
