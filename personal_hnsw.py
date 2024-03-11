@@ -1,3 +1,5 @@
+from itertools import batched
+
 from collections import defaultdict
 from tqdm import tqdm
 import networkx as nx
@@ -98,7 +100,8 @@ class HNSW:
         vector_ids: list[int],
         checkpoint=False, 
         checkpoint_path='./index.hnsw',
-        save_freq=1000
+        save_freq=1000,
+        min_recall: float = None
     ):
 
         # TODO:
@@ -115,13 +118,13 @@ class HNSW:
 
             data_splited, num_splits = self.split_data(vectors, vector_ids, save_freq)
 
-            for vectors, vector_ids in data_splited:
-                self.insert_many(vectors, vector_ids)
+            for batch in data_splited:
+                for vector, vector_id in tqdm(batch, desc=f'Inserting. efConstruction={self.efConstruction}'):
+                    self.insert(vector, vector_id)
                 print(f'Saving current index in {checkpoint_path}')
                 self.save(checkpoint_path)
         else:
             self.insert_many(vectors, vector_ids)
-            
 
         return None
 
@@ -132,16 +135,17 @@ class HNSW:
         
     def split_data(self, vectors, vector_ids, per_split):
         
-        num_splits = vectors.shape[0] // per_split
+        splits = [batch for batch in batched(zip(vectors, vector_ids), per_split)]
+        num_splits = len(splits)
 
-        splits = []
-        buffer = 0
-        for i in range(num_splits):
-            splits.append((
-                vectors[buffer:buffer+per_split, :], 
-                vector_ids[buffer:buffer+per_split]
-            ))
-            buffer += per_split
+        # splits = []
+        # buffer = 0
+        # for i in range(num_splits):
+        #     splits.append((
+        #         vectors[buffer:buffer+per_split, :], 
+        #         vector_ids[buffer:buffer+per_split]
+        #     ))
+        #     buffer += per_split
 
         return splits, num_splits
     
@@ -199,12 +203,15 @@ class HNSW:
         return neighbors[1:]
 
     # TODO: add payload to filter
-    def insert(self, vector, node_id, payload: dict):
+    def insert(self, vector, node_id, payload: dict = None):
 
         if node_id in self.node_ids:
             return None
         else:
             self.node_ids.add(node_id)
+
+        if self.angular:
+            vector = self.normalize_vectors(vector, single_vector=True)
 
         start_i = time.process_time()
         
@@ -264,14 +271,14 @@ class HNSW:
                 layer.add_node(
                     node_id, 
                     vector=vector,
-                    **payload
+                    # **payload
                 )
                 continue
 
             layer.add_node(
                 node_id, 
                 vector=vector,
-                **payload
+                # **payload
             )
 
             start_s2s = time.process_time()

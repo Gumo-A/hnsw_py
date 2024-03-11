@@ -1,4 +1,3 @@
-
 import sys
 import pickle
 import numpy as np
@@ -26,7 +25,13 @@ if __name__ == '__main__':
 
     index = HNSW(M=18)
 
-    index.add_vectors(embeddings, range(embeddings.shape[0]), checkpoint=True, checkpoint_path='./indices/checkpoint.hnsw')
+    index.add_vectors(
+        vectors=embeddings, 
+        vector_ids=range(embeddings.shape[0]), 
+        checkpoint=True, 
+        checkpoint_path=f'./indices/checkpoint_lim{limit}_dim{dim}.hnsw'
+    )
+
     sample_size = 100
     ef = 32
     sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)

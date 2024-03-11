@@ -89,7 +89,7 @@ def parallel_nn(embeddings, limit, dim, processes=None, angular=False):
     splits = [(10, embeddings, split, limit, dim, nb_per_split, i, angular) for i, split in enumerate(splits)]
 
     with Pool(processes=num_processes) as pool:
-        results = pool.starmap(brute_force_parallel_even, splits)
+        results = pool.starmap(brute_force_parallel, splits)
 
     nearest_neighbors = {}
     for result in results:
