@@ -11,8 +11,7 @@ import pickle
 def ann(index, sample, sample_indices, n=10, ef=10):
 
     nearest_to_queries_ann = {}
-    for idx, query in tqdm(enumerate(sample), desc='Finding ANNs', total=sample.shape[0]):
-        idx = sample_indices[idx]
+    for idx, query in tqdm(zip(sample_indices, sample), desc='Finding ANNs', total=sample.shape[0]):
         anns = index.ann_by_vector(vector=query, n=n, ef=ef)
         nearest_to_queries_ann[idx] = anns[:n]
 
@@ -50,43 +49,43 @@ def load_glove(dim=50, limit=None, include_words=False):
     return (np.array(embeddings), words) if include_words else np.array(embeddings) 
 
 
-def brute_force_nn(
-        n: int, 
-        embeddings: np.array, 
-        limit=None, 
-        dim=50
-    ):
+def brute_force_return(
+    n: int, 
+    embeddings: np.ndarray,
+    sample_size: int, 
+    angular: bool
+):
 
     """
         Computes and stores in home dir the n nearest neighbors of each 
         element in the embeddings matrix.
     """
 
-    if limit:
-        total = limit
-    else:
-        total = 400_000
+    sample_indices = np.random.choice(range(embeddings.shape[0]), sample_size, False)
 
-        nearest_neighbors = {}
-        for idx in tqdm(range(embeddings.shape[0]), total=embeddings.shape[0]):
+    nearest_neighbors = {}
+    for idx in tqdm(sample_indices, total=sample_size):
 
-            dists_vector = get_distance(embeddings[idx], embeddings, b_matrix=True)
-            dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
+        dists_vector = get_distance(embeddings[idx], embeddings, angular=angular)
+        dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
 
-            dists_vector = sorted(
-                dists_vector,
-                key=lambda x: x[1]
-            )[1:n+1]
+        dists_vector = sorted(
+            dists_vector,
+            key=lambda x: x[1]
+        )[1:n+1]
 
-            nearest_neighbors[idx] = dists_vector
+        nearest_neighbors[idx] = dists_vector
 
-    return None
+    return nearest_neighbors
 
 def parallel_nn(embeddings, limit, dim, processes=None, angular=False):
+    if angular:
+        embeddings = normalize_vectors(embeddings)
+
     num_processes = processes if processes else multiprocessing.cpu_count()
 
     splits, nb_per_split = split(embeddings, num_processes)
-    splits = [(10, embeddings, split, limit, dim, nb_per_split, i, angular) for i, split in enumerate(splits)]
+    splits = [(100, embeddings, split, limit, dim, nb_per_split, i, angular) for i, split in enumerate(splits)]
 
     with Pool(processes=num_processes) as pool:
         results = pool.starmap(brute_force_parallel, splits)
@@ -291,8 +290,6 @@ def normalize_vectors(vectors, single_vector=False):
 
 def get_distance(a, b, b_matrix=False, angular=False):
     if angular:
-        a = normalize_vectors(a, single_vector=True)
-        b = normalize_vectors(b, single_vector=True)
         return 1 - np.dot(a, b.T)
     else:
         if not b_matrix:
@@ -307,8 +304,6 @@ def get_measures(nearest_to_queries, nearest_to_queries_ann):
     for node, neighbors_distances in nearest_to_queries_ann.items():
         true_nns = list(map(lambda x: x[0], nearest_to_queries[node]))
         for ann in neighbors_distances:
-        # print(len(true_nns), len(neighbors_distances))
-        # for ann, dist in neighbors_distances:
             measures['recall@10'].append(ann in true_nns[:len(neighbors_distances)])
 
     return np.array(measures['recall@10'])

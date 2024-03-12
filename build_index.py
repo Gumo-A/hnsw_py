@@ -15,25 +15,19 @@ from helpers.glove_helpers import (
 
 if __name__ == '__main__':
 
-    dim, limit, angular = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3]))
+    dim, limit, angular, M = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3])), int(sys.argv[4])
 
-    bruteforce_data = load_brute_force(dim=dim, limit=limit, name_append=f'_angular_{angular}')
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
     embeddings = embeddings.astype(np.float16)
 
 
-    index = HNSW( M=24,  )
-    index.add_vectors(embeddings, range(embeddings.shape[0]), checkpoint=True)
+    index = HNSW(M=M, angular=angular)
+    index.add_vectors(
+        embeddings, 
+        range(embeddings.shape[0]), 
+        checkpoint=True, 
+        checkpoint_path=f'./indices/lim{limit}_dim{dim}_angular_{angular}_M{index.M}_checkpoint.hnsw',
+        save_freq=10_000
+    )
 
-    sample_size = 100
-    sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
-
-    ef = 20
-
-    print(f'Finding ANNs with ef={ef}')
-    anns= ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
-    measures = get_measures(bruteforce_data, anns)
-    print(measures.mean())
-
-    index.save(f'./indices/lim{limit}_dim{dim}.hnsw')
-
+    index.save(f'./indices/lim{limit}_dim{dim}_angular_{angular}_M{M}.hnsw')

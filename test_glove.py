@@ -24,11 +24,10 @@ if __name__ == '__main__':
     embeddings = embeddings.astype(np.float16)
 
     # s2s_times = []
-    for i in [i for i in range(2, 37)]:
+    for i in [i for i in range(12, 37)]:
         index = HNSW(
             M=i, 
-            # efConstruction=i,
-            # angular=angular
+            angular=angular
         )
         index.add_vectors(embeddings, range(embeddings.shape[0]))
 
@@ -41,6 +40,13 @@ if __name__ == '__main__':
             anns = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
             measures = get_measures(bruteforce_data, anns)
             print('Recall@10:', round(measures.mean(), 5))
+
+            # print('ANN by id:')
+            # node_id = np.random.randint(0, embeddings.shape[0])
+            # print(f'"{words[node_id]}"', 'ANNs:')
+            # anns = [words[i] for i in index.ann_by_id(node_id, 3, 24)]
+            # print(anns)
+
 
         print('Parameters:')
         index.print_parameters()

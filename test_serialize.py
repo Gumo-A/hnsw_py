@@ -5,35 +5,37 @@ import networkx as nx
 from personal_hnsw import HNSW
 from helpers.glove_helpers import (
     load_glove,
-    load_brute_force,
+    brute_force_return,
     get_distance,
     get_measures,
     ann
 )
 
-np.random.seed(0)
+# np.random.seed(0)
 
 if __name__ == '__main__':
 
-    dim, limit, angular = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3]))
+    dim, limit, angular, M = int(sys.argv[1]), int(sys.argv[2]), bool(int(sys.argv[3])), int(sys.argv[4])
 
     index = HNSW()
-    index.load('./indices/test_index_to_add.hnsw')
+    index.load(f'./indices/lim{limit}_dim{dim}_angular_{angular}_M{M}.hnsw')
+    index.print_parameters()
 
-    bruteforce_data = load_brute_force(dim=dim, limit=limit, name_append=f'_angular_{angular}')
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
-    half = round(embeddings.shape[0]/2)
-    embeddings_to_add = embeddings.astype(np.float16)[half*1:half*2]
-    index.print_parameters()
-    print(index.current_vector_id)
-    index.add_vectors(embeddings_to_add)
 
-    sample_size = 100
-    for ef in [i for i in range(12, 35, 4)]:
-        sample_indices = np.random.randint(0, embeddings.shape[0], sample_size)
-        print(f'Finding ANNs with ef={ef}')
-        anns = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
-        measures = get_measures(bruteforce_data, anns)
-        print('Recall@10:', round(measures.mean(), 5))
+    for i in range(10):
+        n = np.random.randint(0, embeddings.shape[0])
+        word = words[n]
+        anns = index.ann_by_vector(embeddings[n, :], 10, 36)
+        print(word)
+        print([words[i] for i in anns])
+    
+    bruteforce_data = brute_force_return(n=10, embeddings=embeddings, sample_size=100, angular=angular)
+    sample_indices = np.array(list(bruteforce_data.keys()))
 
-    index.print_parameters()
+    ef = 36
+    print(f'Finding ANNs with ef={ef}')
+    anns = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
+    measures = get_measures(bruteforce_data, anns)
+    print('Recall@10:', round(measures.mean(), 5))
+

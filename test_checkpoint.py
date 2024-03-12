@@ -23,14 +23,8 @@ if __name__ == '__main__':
 
     embeddings = embeddings.astype(np.float16)
 
-    index = HNSW(M=18)
-
-    index.add_vectors(
-        vectors=embeddings, 
-        vector_ids=range(embeddings.shape[0]), 
-        checkpoint=True, 
-        checkpoint_path=f'./indices/checkpoint_lim{limit}_dim{dim}.hnsw'
-    )
+    index = HNSW()
+    index.load(f'./indices/lim{limit}_dim{dim}_angular_{angular}.hnsw')
 
     sample_size = 100
     ef = 32

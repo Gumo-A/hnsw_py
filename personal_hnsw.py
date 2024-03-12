@@ -99,7 +99,7 @@ class HNSW:
         vectors: np.array, 
         vector_ids: list[int],
         checkpoint=False, 
-        checkpoint_path='./index.hnsw',
+        checkpoint_path='./indices/checkpoint.hnsw',
         save_freq=1000,
         min_recall: float = None
     ):
@@ -108,6 +108,9 @@ class HNSW:
         # setup methods to estimate recall at the current state of
         # the index construction. Set it up so that if a certain
         # threshold is not met we set higher values for M and/or efConstruction.
+
+        limit = vectors.shape[0]
+        dim = vectors.shape[1]
 
         if self.angular:
             vectors = self.normalize_vectors(vectors)
@@ -118,11 +121,17 @@ class HNSW:
 
             data_splited, num_splits = self.split_data(vectors, vector_ids, save_freq)
 
-            for batch in data_splited:
-                for vector, vector_id in tqdm(batch, desc=f'Inserting. efConstruction={self.efConstruction}'):
-                    self.insert(vector, vector_id)
-                print(f'Saving current index in {checkpoint_path}')
-                self.save(checkpoint_path)
+            print(f'Adding vectors in batches of {save_freq}, with checkpoints every batch')
+            for batch in tqdm(data_splited, desc='Total progress', ncols=0):
+                print(f'fConstruction={self.efConstruction} M={self.M}')
+                insertions = 0
+                for vector, vector_id in tqdm(batch):
+                    insertions += self.insert(vector, vector_id)
+
+                if insertions > 0:
+                    print(f'Saving current index in {checkpoint_path}')
+                    self.save(checkpoint_path)
+                    self.save(checkpoint_path + '.copy')
         else:
             self.insert_many(vectors, vector_ids)
 
@@ -138,15 +147,6 @@ class HNSW:
         splits = [batch for batch in batched(zip(vectors, vector_ids), per_split)]
         num_splits = len(splits)
 
-        # splits = []
-        # buffer = 0
-        # for i in range(num_splits):
-        #     splits.append((
-        #         vectors[buffer:buffer+per_split, :], 
-        #         vector_ids[buffer:buffer+per_split]
-        #     ))
-        #     buffer += per_split
-
         return splits, num_splits
     
     def determine_layer(self):
@@ -158,9 +158,30 @@ class HNSW:
                 self.ep = set([np.random.choice(self.layers[layer_number].nodes())])
                 return None
 
-    def ann_by_id(self, node_id: int):
-        # TODO
-        pass
+    def ann_by_id(self, node_id: int, n, ef):
+        layer = self.layers[0]
+        vector = layer._node[node_id]['vector']
+
+        neighbors = self.search_layer(
+            layer=layer,
+            query=vector,
+            entry_point=set([node_id]),
+            ef=ef
+        )
+
+        neighbors = self.get_nearest(
+            layer=layer,
+            candidates=neighbors,
+            query=vector,
+            # this '+1' should be removed when
+            # comparing to new vectors.
+            # I put it here to not include the query node
+            # in the results and keep the measures clean
+            top=n
+        )
+
+        # same for the slice, I k=only need to return the whole list
+        return neighbors[:]
 
     def ann_by_vector(self, vector, n, ef):
 
@@ -206,7 +227,7 @@ class HNSW:
     def insert(self, vector, node_id, payload: dict = None):
 
         if node_id in self.node_ids:
-            return None
+            return 0
         else:
             self.node_ids.add(node_id)
 
@@ -288,7 +309,6 @@ class HNSW:
                 entry_point=ep,
                 ef=self.efConstruction,
                 query_id=node_id,
-                step=2
             )
             end_s2s = time.process_time()
             self.time_measurements['step 2 search'].append(end_s2s-start_s2s)
@@ -343,6 +363,8 @@ class HNSW:
 
         end_i  = time.process_time()
         self.time_measurements['insert'].append(end_i-start_i)
+
+        return 1
 
     def select_neighbors_simple(
         self, 
@@ -528,7 +550,6 @@ class HNSW:
 
         return furthest if return_distance else furthest[0]
 
-
     def search_layer(
         self, 
         layer, 
@@ -536,7 +557,6 @@ class HNSW:
         entry_point: set[int], 
         ef: int,
         query_id: int = None,
-        step=1
     ) -> set:
 
         v = entry_point.copy()
@@ -544,7 +564,6 @@ class HNSW:
         W = entry_point.copy()
         
         while len(C) > 0:
-            # start_w = time.process_time()
             c, cand_query_dist = self.get_nearest(
                 layer, 
                 C, 
@@ -561,13 +580,8 @@ class HNSW:
                 return_distance=True
             )
 
-            # end_w = time.process_time()
-            # if step == 2: self.time_measurements['search s2w'].append(end_w-start_w)
+            if cand_query_dist > f2q_dist : break # all element in W are evaluated 
 
-            if cand_query_dist > f2q_dist :
-                break # all element in W are evaluated 
-
-            # start_f = time.process_time()
             for neighbor in layer.neighbors(c):
                 if neighbor not in v:
                     v.add(neighbor)
@@ -593,9 +607,6 @@ class HNSW:
 
                         if len(W) > ef:
                             W.remove(f)
-
-            # end_f = time.process_time()
-            # if step == 2: self.time_measurements['search s2f'].append(end_f-start_f)
 
         return W
 
@@ -646,3 +657,60 @@ class HNSW:
             norm = np.linalg.norm(vectors, axis=1)
             norm = np.expand_dims(norm, axis=1)
             return vectors/norm
+
+    def get_measures(self, nearest_to_queries, nearest_to_queries_ann):
+
+        measures = defaultdict(list)
+        for node, neighbors in nearest_to_queries_ann.items():
+            true_nns = list(map(lambda x: x[0], nearest_to_queries[node]))
+            for ann in neighbors:
+                measures['recall@10'].append(ann in true_nns[:len(neighbors)])
+
+        return np.array(measures['recall@10'])
+
+    def load_brute_force(self, dim, limit, name_append=''):
+
+        path = f'/home/gamal/glove_dataset/brute_force/lim_{limit}_dim_{dim}{name_append}'
+        print(path)
+        with open(path, 'rb') as file:
+            data = pickle.load(file)
+        return data
+
+    def load_glove(self, dim, limit, include_words=False):
+        embeddings = []
+        with open(f'/home/gamal/glove_dataset/glove.6B.{dim}d.txt', 'r') as file:
+            c = 0
+            words = []
+            for line in tqdm(file, total=limit, desc='Loading embeddings'):
+                line = line.strip().split(' ')
+                word, emb = line[0], line[1:]
+                emb = list(map(float, emb))
+                embeddings.append(emb)
+                words.append(word)
+                c += 1
+                if c >= limit:
+                    break
+
+        return (np.array(embeddings), words) if include_words else np.array(embeddings)
+
+    
+    def brute_force_return(
+        self,
+        n: int, 
+        embeddings: np.array, 
+    ):
+
+        nearest_neighbors = {}
+        for idx in tqdm(range(embeddings.shape[0]), total=embeddings.shape[0]):
+
+            dists_vector = self.get_distance(embeddings[idx], embeddings, axis=1)
+            dists_vector = [(jdx, dist) for jdx, dist in enumerate(dists_vector)]
+
+            dists_vector = sorted(
+                dists_vector,
+                key=lambda x: x[1]
+            )[1:n+1]
+
+            nearest_neighbors[idx] = dists_vector
+
+        return nearest_neighbors
