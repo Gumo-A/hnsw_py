@@ -26,7 +26,7 @@ if __name__ == '__main__':
     # s2s_times = []
     for i in [i for i in range(12, 37)]:
         index = HNSW(
-            M=i, 
+            # M=i, 
             angular=angular
         )
         index.add_vectors(embeddings, range(embeddings.shape[0]))

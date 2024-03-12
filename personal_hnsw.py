@@ -40,11 +40,11 @@ class HNSW:
 
         return None
 
-    def save(self, path, save_distance_cache=False):
+    # TODO use this func to parallelize
+    def save(self, path=None, return_data=False):
         index_data = {}
         
         index_data['node_ids'] = self.node_ids
-        index_data['distances_cache'] = self.distances_cache if save_distance_cache else {}
 
         params = {}
         for param_name in ['ep', 'M', 'Mmax', 'Mmax0', 'mL', 'efConstruction', 'angular']:
@@ -61,14 +61,24 @@ class HNSW:
             nodes.append(layer.nodes(data=True))
         index_data['nodes'] = nodes
 
-        with open(path, 'wb') as file:
-            pickle.dump(index_data, file)
+        if path:
+            with open(path, 'wb') as file:
+                pickle.dump(index_data, file)
+
+        if return_data:
+            return index_data
 
         
 
-    def load(self, path):
-        with open(path, 'rb') as file:
-            index_data = pickle.load(file)
+    # TODO use this func to parallelize
+    def load(self, path: str = None, index_data: dict = None):
+
+        # assert (path or index_data), 'Must provide one of "path" or "index_data"'
+        # assert (path and (not index_data)) or (index_data and (not path)), 'Must provide "path" or "index_data", not both'
+        
+        if path:
+            with open(path, 'rb') as file:
+                index_data = pickle.load(file)
 
         self.layers = []
         for layer_number in range(len(index_data['layers'])):
@@ -82,7 +92,6 @@ class HNSW:
             self.layers.append(graph)
 
         self.node_ids = index_data['node_ids']
-        self.distances_cache = index_data['distances_cache']
 
         for param_name, param in index_data['params'].items():
             self.__dict__[param_name] = param
@@ -90,9 +99,10 @@ class HNSW:
 
     def print_parameters(self):
         for param, val in self.__dict__.items():
-            if param in ['M', 'Mmax', 'Mmax0', 'mL', 'efConstruction', 'angular']:
+            if param in ['M', 'Mmax', 'Mmax0', 'mL', 'efConstruction', 'angular', 'ep']:
                 print(param, val)
         print('Nb. layers', len(self.layers))
+        print('Nb. nodes:', len(self.node_ids))
     
     def add_vectors(
         self, 
