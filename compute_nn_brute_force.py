@@ -3,7 +3,7 @@ import numpy as np
 import multiprocessing 
 from multiprocessing import Pool
 
-from personal_hnsw import HNSW
+from hnsw import HNSW
 from helpers.glove_helpers import (
     load_glove,
     parallel_nn,
@@ -18,12 +18,15 @@ if __name__ == '__main__':
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
 
     nearest_neighbors = parallel_nn(
+        n=10,
         embeddings=embeddings, 
         limit=limit, 
         dim=dim, 
         processes=processes,
         angular=angular
     )
+    # for key in nearest_neighbors:
+    #     nearest_neighbors[key] = list(filter(lambda x: x[0] % 2 == 0, nearest_neighbors[key]))[:10]
 
     sample_size = 10
     for _ in range(sample_size):

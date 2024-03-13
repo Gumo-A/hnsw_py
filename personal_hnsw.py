@@ -26,7 +26,7 @@ class HNSW:
         
         self.distances_cache = {}
 
-        self.ep = set([None])
+        self.ep = None
         self.node_ids = set()
         
         self.M = M
@@ -162,11 +162,12 @@ class HNSW:
     def determine_layer(self):
         return math.floor(-np.log(np.random.random())*self.mL)
         
-    def define_entrypoint(self):
-        for layer_number in range(len(self.layers)-1, -1, -1):
-            if self.layers[layer_number].order() != 0:
-                self.ep = set([np.random.choice(self.layers[layer_number].nodes())])
-                return None
+    def define_entrypoint(self, new_ep):
+        if new_ep:
+            for layer_number in range(len(self.layers)-1, -1, -1):
+                if self.layers[layer_number].order() != 0:
+                    self.ep = set([np.random.choice(self.layers[layer_number].nodes())])
+                    return None
 
     def ann_by_id(self, node_id: int, n, ef):
         layer = self.layers[0]
@@ -236,6 +237,8 @@ class HNSW:
     # TODO: add payload to filter
     def insert(self, vector, node_id, payload: dict = None):
 
+        start_i = time.process_time()
+
         if node_id in self.node_ids:
             return 0
         else:
@@ -243,36 +246,46 @@ class HNSW:
 
         if self.angular:
             vector = self.normalize_vectors(vector, single_vector=True)
-
-        start_i = time.process_time()
         
-        # start_p = time.process_time()
-        
-        L = len(self.layers) - 1
-        l = math.floor(-np.log(np.random.random())*self.mL)
+        max_layer_nb = len(self.layers) - 1
+        current_layer_nb = math.floor(-np.log(np.random.random())*self.mL)
 
-        new_ep = False
-        if (l > L) or (self.ep is None):
-            while l > L:
-                self.layers.append(nx.Graph())
-                L += 1
-            new_ep = True
+        new_ep, max_layer_nb = self.define_new_layers(max_layer_nb, current_layer_nb)
 
         ep = self.ep
-        # end_p = time.process_time()
-        # self.time_measurements['prelimilar'].append(end_p-start_p)
+        ep = self.step_1(node_id, vector, payload, ep, max_layer_nb, current_layer_nb)
 
+        start_s2 = time.process_time()
 
-        # start_s1 = time.process_time()
-        # step 1
-        for layer_number in range(L, l, -1):
+        self.step_2(node_id, vector, payload, ep, current_layer_nb)
+
+        end_s2 = time.process_time()
+        self.time_measurements['step 2'].append(end_s2-start_s2)
+
+        self.define_entrypoint(new_ep)
+
+        end_i  = time.process_time()
+        self.time_measurements['insert'].append(end_i-start_i)
+
+        return 1
+
+    def define_new_layers(self, max_layer_nb, current_layer_nb):
+        new_ep = False
+        if (current_layer_nb > max_layer_nb) or (self.ep is None):
+            while current_layer_nb > max_layer_nb:
+                self.layers.append(nx.Graph())
+                max_layer_nb += 1
+            new_ep = True
+        return new_ep, max_layer_nb
+
+    def step_1(self, node_id, vector, payload, ep, max_layer_nb, current_layer_nb):
+        for layer_number in range(max_layer_nb, current_layer_nb, -1):
 
             layer = self.layers[layer_number]
 
             if layer.order() == 0:
                 continue
-            
-            # start_s1s = time.process_time()
+    
             W = self.search_layer(
                 layer=layer,
                 query=vector,
@@ -280,39 +293,30 @@ class HNSW:
                 ef=1,
                 query_id=node_id,
             )
-            # end_s1s = time.process_time()
-            # self.time_measurements['step 1 search'].append(end_s1s-start_s1s)
             ep = set([self.get_nearest(
                 layer, 
                 W, 
                 vector, 
                 query_id=node_id
             )])
-        # end_s1 = time.process_time()
-        # self.time_measurements['step 1'].append(end_s1-start_s1)
+        return ep
 
-
-        # start_s2 = time.process_time()
-        # step 2
-        for layer_number in range(l, -1, -1):
+    def step_2(self, node_id, vector, payload, ep, current_layer_nb):
+        for layer_number in range(current_layer_nb, -1, -1):
 
             layer = self.layers[layer_number]
 
             if layer.order() == 0:
                 layer.add_node(
-                    node_id, 
-                    vector=vector,
+                    node_id, vector=vector,
                     # **payload
                 )
                 continue
 
             layer.add_node(
-                node_id, 
-                vector=vector,
+                node_id, vector=vector,
                 # **payload
             )
-
-            start_s2s = time.process_time()
             ep = self.search_layer(
                 layer=layer,
                 query=vector,
@@ -320,10 +324,6 @@ class HNSW:
                 ef=self.efConstruction,
                 query_id=node_id,
             )
-            end_s2s = time.process_time()
-            self.time_measurements['step 2 search'].append(end_s2s-start_s2s)
-
-            # start_s2h = time.process_time()
             neighbors_to_connect = self.select_neighbors_heuristic(
                 layer=layer,
                 inserted_node=node_id,
@@ -331,50 +331,35 @@ class HNSW:
                 # extend_cands=True,
                 keep_pruned=True
             )
-            # end_s2h = time.process_time()
-            # self.time_measurements['step 2 heuristic'].append(end_s2h-start_s2h)
-
             self.add_edges(
                 layer=layer,
                 node_id=node_id, 
-                sorted_candidates=neighbors_to_connect
+                candidates=neighbors_to_connect
             )
+            self.prune_connexions(layer_number, layer, neighbors_to_connect)
 
-            # start_s2p = time.process_time()
-            for neighbor in neighbors_to_connect:
-                if (
-                    ((layer_number > 0) and (layer.degree[neighbor] > self.Mmax)) or
-                    ((layer_number == 0) and (layer.degree[neighbor] > self.Mmax0))
-                ):
+    def prune_connexions(self, layer_number, layer, neighbors_to_connect):
 
-                    limit = self.Mmax if layer_number > 0 else self.Mmax0
+        for neighbor in neighbors_to_connect:
+            if (
+                ((layer_number > 0) and (layer.degree[neighbor] > self.Mmax)) or
+                ((layer_number == 0) and (layer.degree[neighbor] > self.Mmax0))
+            ):
 
-                    old_neighbors = list(layer.neighbors(neighbor))
-                    new_neighbors = self.select_neighbors_heuristic(
-                        layer,
-                        neighbor,
-                        old_neighbors
-                    )
-                    layer.remove_edges_from([(neighbor, old) for old in old_neighbors])
-                    self.add_edges(
-                        layer,
-                        neighbor,
-                        list(new_neighbors)[:limit]
-                    )
+                limit = self.Mmax if layer_number > 0 else self.Mmax0
 
-            # end_s2p = time.process_time()
-            # self.time_measurements['step 2 prune'].append(end_s2p-start_s2p)
-
-        # end_s2 = time.process_time()
-        # self.time_measurements['step 2'].append(end_s2-start_s2)
-
-
-        self.define_entrypoint()
-
-        end_i  = time.process_time()
-        self.time_measurements['insert'].append(end_i-start_i)
-
-        return 1
+                old_neighbors = list(layer.neighbors(neighbor))
+                new_neighbors = self.select_neighbors_heuristic(
+                    layer,
+                    neighbor,
+                    old_neighbors
+                )
+                layer.remove_edges_from([(neighbor, old) for old in old_neighbors])
+                self.add_edges(
+                    layer,
+                    neighbor,
+                    list(new_neighbors)[:limit]
+                )
 
     def select_neighbors_simple(
         self, 
@@ -493,9 +478,9 @@ class HNSW:
         self, 
         layer,
         node_id: int, 
-        sorted_candidates: set[int]
+        candidates: set[int]
     ):
-        edges = [(node_id, cand) for cand in sorted_candidates]
+        edges = [(node_id, cand) for cand in candidates]
         layer.add_edges_from(edges)
         
         # for candidate, distance in sorted_candidates:

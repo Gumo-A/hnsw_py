@@ -1,4 +1,4 @@
-from personal_hnsw import HNSW
+from hnsw import HNSW
 import numpy as np
 
 

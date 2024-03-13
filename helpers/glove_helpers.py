@@ -3,7 +3,7 @@ import multiprocessing
 from multiprocessing import Pool
 from tqdm import tqdm
 import time
-from personal_hnsw import HNSW
+from hnsw import HNSW
 import numpy as np
 import pickle
 
@@ -13,8 +13,7 @@ def ann(index, sample, sample_indices, n=10, ef=10):
     nearest_to_queries_ann = {}
     for idx, query in tqdm(zip(sample_indices, sample), desc='Finding ANNs', total=sample.shape[0]):
         anns = index.ann_by_vector(vector=query, n=n, ef=ef)
-        nearest_to_queries_ann[idx] = anns[:n]
-
+        nearest_to_queries_ann[idx] = anns
     return nearest_to_queries_ann
 
 
@@ -78,14 +77,14 @@ def brute_force_return(
 
     return nearest_neighbors
 
-def parallel_nn(embeddings, limit, dim, processes=None, angular=False):
+def parallel_nn(n, embeddings, limit, dim, processes=None, angular=False):
     if angular:
         embeddings = normalize_vectors(embeddings)
 
     num_processes = processes if processes else multiprocessing.cpu_count()
 
     splits, nb_per_split = split(embeddings, num_processes)
-    splits = [(100, embeddings, split, limit, dim, nb_per_split, i, angular) for i, split in enumerate(splits)]
+    splits = [(n, embeddings, split, limit, dim, nb_per_split, i, angular) for i, split in enumerate(splits)]
 
     with Pool(processes=num_processes) as pool:
         results = pool.starmap(brute_force_parallel, splits)

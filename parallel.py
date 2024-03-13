@@ -2,7 +2,7 @@ import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool, Manager
 import multiprocessing
-from personal_hnsw import HNSW
+from hnsw import HNSW
 from itertools import batched, zip_longest
 import math
 import sys

@@ -2,10 +2,11 @@ import sys
 import pickle
 import numpy as np
 import networkx as nx
-from personal_hnsw import HNSW
+from hnsw import HNSW
 from helpers.glove_helpers import (
     load_glove,
     brute_force_return,
+    load_brute_force,
     get_distance,
     get_measures,
     ann
@@ -22,6 +23,8 @@ if __name__ == '__main__':
     index.print_parameters()
 
     embeddings, words = load_glove(dim=dim, limit=limit, include_words=True)
+    # brute_force_data = load_brute_force(dim, limit, f'_angular_{angular}')
+    # sample_indices = np.random.randint(0, embeddings.shape[0], 1000)
 
     for i in range(10):
         n = np.random.randint(0, embeddings.shape[0])
@@ -30,12 +33,14 @@ if __name__ == '__main__':
         print(word)
         print([words[i] for i in anns])
     
-    bruteforce_data = brute_force_return(n=10, embeddings=embeddings, sample_size=100, angular=angular)
-    sample_indices = np.array(list(bruteforce_data.keys()))
+    n = 1000
+    brute_force_data = brute_force_return(n=n, embeddings=embeddings, sample_size=100, angular=angular)
+    sample_indices = np.array(list(brute_force_data.keys()))
+
 
     ef = 36
     print(f'Finding ANNs with ef={ef}')
-    anns = ann(index, embeddings[sample_indices, :], sample_indices, ef=ef)
-    measures = get_measures(bruteforce_data, anns)
+    anns = ann(index, embeddings[sample_indices, :], sample_indices, n=n, ef=ef)
+    measures = get_measures(brute_force_data, anns)
     print('Recall@10:', round(measures.mean(), 5))
 
